@@ -17,6 +17,7 @@ public class KeyRanges implements Iterable<KeyRange>
 
     public KeyRanges(KeyRange[] ranges)
     {
+        Preconditions.checkNotNull(ranges);
         this.ranges = ranges;
     }
 

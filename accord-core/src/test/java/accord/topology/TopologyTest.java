@@ -18,7 +18,6 @@ import static accord.impl.IntKey.range;
 
 public class TopologyTest
 {
-
     private static void assertRangeForKey(Topology topology, int key, int start, int end)
     {
         Key expectedKey = key(key);
