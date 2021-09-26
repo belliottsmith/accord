@@ -95,6 +95,8 @@ public abstract class KeyRange<K extends Key<K>>
 
     public abstract boolean endInclusive();
 
+    public abstract KeyRange<K> subRange(K start, K end);
+
     @Override
     public boolean equals(Object o)
     {
@@ -125,6 +127,31 @@ public abstract class KeyRange<K extends Key<K>>
     public boolean containsKey(K key)
     {
         return compareKey(key) == 0;
+    }
+
+
+    /**
+     * Returns a negative integer, zero, or a positive integer if both points of the provided range are less than, the
+     * reange intersects this range, or both points are greater than this range
+     */
+    public int compareIntersecting(KeyRange<K> that)
+    {
+        if (this.start.compareTo(that.end) >= 0)
+            return -1;
+        if (this.end.compareTo(that.start) <= 0)
+            return 1;
+        return 0;
+    }
+
+    public boolean fullyContains(KeyRange<K> that)
+    {
+        return that.start.compareTo(this.start) >= 0 && that.end.compareTo(this.end) <= 0;
+    }
+
+    public boolean intersects(Keys keys)
+    {
+        int i = lowKeyIndex(keys);
+        return i >=0 || i < keys.size();
     }
 
     /**

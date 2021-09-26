@@ -28,4 +28,33 @@ public class KeyRangesTest
         Assertions.assertEquals(1, ranges.rangeIndexForKey(IntKey.key(350)));
         Assertions.assertEquals(-3, ranges.rangeIndexForKey(IntKey.key(450)));
     }
+
+    @Test
+    void differenceTest()
+    {
+        Assertions.assertEquals(ranges(r(100, 125), r(175, 200)),
+                                ranges(r(100, 200)).difference(
+                                        ranges(r(125, 175))));
+        Assertions.assertEquals(ranges(r(125, 175)),
+                                ranges(r(100, 200)).difference(
+                                        ranges(r(100, 125), r(175, 200))));
+        Assertions.assertEquals(ranges(r(100, 175)),
+                                ranges(r(100, 200)).difference(
+                                        ranges(r(0, 75), r(175, 200))));
+        Assertions.assertEquals(ranges(r(100, 200)),
+                                ranges(r(100, 200)).difference(
+                                        ranges(r(0, 75), r(200, 205))));
+
+        Assertions.assertEquals(ranges(r(125, 175), r(300, 350)),
+                                ranges(r(100, 200), r(250, 350)).difference(
+                                        ranges(r(0, 125), r(175, 300))));
+        Assertions.assertEquals(ranges(r(125, 200), r(300, 350)),
+                                ranges(r(100, 200), r(250, 350)).difference(
+                                        ranges(r(0, 125), r(225, 300))));
+
+        Assertions.assertEquals(ranges(r(125, 135), r(140, 160), r(175, 200)),
+                                ranges(r(100, 200)).difference(
+                                        ranges(r(0, 125), r(135, 140), r(160, 170), r(170, 175))));
+        // TODO: more range combinations
+    }
 }

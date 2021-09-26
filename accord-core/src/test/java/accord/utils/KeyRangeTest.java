@@ -14,14 +14,47 @@ public class KeyRangeTest
         return new IntKey(v);
     }
 
+    private static KeyRange<IntKey> r(int start, int end)
+    {
+        return IntKey.range(start, end);
+    }
+
+    private static class EndInclusiveIntRange extends KeyRange.EndInclusive<IntKey>
+    {
+        public EndInclusiveIntRange(IntKey start, IntKey end)
+        {
+            super(start, end);
+        }
+
+        @Override
+        public KeyRange<IntKey> subRange(IntKey start, IntKey end)
+        {
+            return new EndInclusiveIntRange(start, end);
+        }
+    }
+
+    private static class StartInclusiveIntRange extends KeyRange.StartInclusive<IntKey>
+    {
+        public StartInclusiveIntRange(IntKey start, IntKey end)
+        {
+            super(start, end);
+        }
+
+        @Override
+        public KeyRange<IntKey> subRange(IntKey start, IntKey end)
+        {
+            return new StartInclusiveIntRange(start, end);
+        }
+    }
+
     static KeyRange<IntKey> rangeEndIncl(int start, int end)
     {
-        return new KeyRange.EndInclusive<>(k(start), k(end)) {};
+        return new EndInclusiveIntRange(k(start), k(end));
     }
 
     static KeyRange<IntKey> rangeStartIncl(int start, int end)
     {
-        return new KeyRange.StartInclusive<>(k(start), k(end)) {};
+        return new StartInclusiveIntRange(k(start), k(end));
     }
 
     static Keys keys(int... values)
@@ -146,5 +179,43 @@ public class KeyRangeTest
         assertLowKeyIndex(6, rangeStartIncl(16, 20), keys);
         assertLowKeyIndex(7, rangeEndIncl(20, 25), keys);
         assertLowKeyIndex(7, rangeStartIncl(20, 25), keys);
+    }
+
+    @Test
+    void fullyContainsTest()
+    {
+        Assertions.assertTrue(r(100, 200).fullyContains(r(100, 200)));
+        Assertions.assertTrue(r(100, 200).fullyContains(r(150, 200)));
+        Assertions.assertTrue(r(100, 200).fullyContains(r(100, 150)));
+        Assertions.assertTrue(r(100, 200).fullyContains(r(125, 175)));
+
+        Assertions.assertFalse(r(100, 200).fullyContains(r(50, 60)));
+        Assertions.assertFalse(r(100, 200).fullyContains(r(100, 250)));
+        Assertions.assertFalse(r(100, 200).fullyContains(r(150, 250)));
+        Assertions.assertFalse(r(100, 200).fullyContains(r(50, 200)));
+        Assertions.assertFalse(r(100, 200).fullyContains(r(50, 150)));
+        Assertions.assertFalse(r(100, 200).fullyContains(r(250, 260)));
+    }
+
+    @Test
+    void compareIntersectingTest()
+    {
+        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(0, 100)));
+        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(0, 99)));
+
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(0, 101)));
+
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(99, 199)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(99, 200)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(99, 201)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(101, 199)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(125, 175)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(100, 201)));
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(101, 201)));
+
+        Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(199, 300)));
+
+        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(200, 300)));
+        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(201, 300)));
     }
 }

@@ -16,6 +16,12 @@ public class MaelstromKey extends Datum<MaelstromKey> implements Key<MaelstromKe
         {
             super(start, end);
         }
+
+        @Override
+        public KeyRange<MaelstromKey> subRange(MaelstromKey start, MaelstromKey end)
+        {
+            return new Range(start, end);
+        }
     }
 
     public MaelstromKey(Kind kind, Object value)

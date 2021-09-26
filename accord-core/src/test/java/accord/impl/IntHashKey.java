@@ -16,6 +16,12 @@ public class IntHashKey implements Key<IntHashKey>
         {
             super(start, end);
         }
+
+        @Override
+        public KeyRange<IntHashKey> subRange(IntHashKey start, IntHashKey end)
+        {
+            return new Range(start, end);
+        }
     }
 
     public final int key;

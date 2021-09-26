@@ -16,6 +16,12 @@ public class IntKey implements Key<IntKey>
         {
             super(start, end);
         }
+
+        @Override
+        public KeyRange<IntKey> subRange(IntKey start, IntKey end)
+        {
+            return new Range(start, end);
+        }
     }
 
     public final int key;
