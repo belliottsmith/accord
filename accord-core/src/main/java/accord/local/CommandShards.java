@@ -1,37 +1,37 @@
 package accord.local;
 
+import accord.api.KeyRange;
+import accord.topology.KeyRanges;
 import accord.topology.Shards;
 import accord.topology.Topology;
 import accord.txn.Keys;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Iterators;
 
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Spliterator;
-import java.util.Spliterators;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 public class CommandShards
 {
-    private Topology topology = Shards.EMPTY;
+    private Topology localTopology = Shards.EMPTY;
     private final CommandShard[] commandShards;
-    private final ReadWriteLock topologyLock = new ReentrantReadWriteLock(true);
 
-    public CommandShards(int num)
+    public CommandShards(int num, Supplier<CommandShard> commandShardConstructor)
     {
         this.commandShards = new CommandShard[num];
         for (int i=0; i<num; i++)
-            commandShards[i] = new CommandShard();
+            commandShards[i] = commandShardConstructor.get();
     }
 
     public Stream<CommandShard> stream()
     {
-        LockingSpliterator spliterator = new LockingSpliterator();
-        return StreamSupport.stream(spliterator, false).onClose(spliterator::close);
+        return StreamSupport.stream(new CommandSpliterator(), false);
     }
 
     public Stream<CommandShard> forKeys(Keys keys)
@@ -39,52 +39,103 @@ public class CommandShards
         return stream().filter(commandShard -> commandShard.intersects(keys));
     }
 
-    public void onTopologyChange(Topology newTopology)
+    private static List<KeyRanges> shardRanges(KeyRanges ranges, int shards)
     {
-        // TODO: change topology without stopping all activity
-        topologyLock.writeLock().lock();
-        try
+        List<List<KeyRange>> sharded = new ArrayList<>(shards);
+        for (int i=0; i<shards; i++)
+            sharded.add(new ArrayList<>(ranges.size()));
+
+        for (KeyRange range : ranges)
         {
-            throw new UnsupportedOperationException();
+            KeyRanges split = range.split(shards);
+            Preconditions.checkState(split.size() <= shards);
+            for (int i=0; i<split.size(); i++)
+                sharded.get(i).add(split.get(i));
         }
-        finally
+
+        List<KeyRanges> result = new ArrayList<>(shards);
+        for (int i=0; i<shards; i++)
         {
-            topologyLock.writeLock().unlock();
+            result.add(new KeyRanges(sharded.get(i).stream().toArray(KeyRange[]::new)));
+        }
+
+        return result;
+    }
+
+    public synchronized void updateTopology(Topology newTopology)
+    {
+        // TODO: maybe support rebalancing between shards
+        KeyRanges removed = localTopology.getRanges().difference(newTopology.getRanges());
+        if (!removed.isEmpty())
+            stream().forEach(commands -> commands.removeRanges(removed));
+
+        KeyRanges added = newTopology.getRanges().difference(localTopology.getRanges());
+        if (!added.isEmpty())
+        {
+            List<KeyRanges> sharded = shardRanges(added, commandShards.length);
+            stream().forEach(commands -> commands.addRanges(sharded.get(commands.index())));
         }
     }
 
-    private class LockingSpliterator extends Spliterators.AbstractSpliterator<CommandShard>
+    private class CommandSpliterator implements Spliterator<CommandShard>
     {
-        Iterator<CommandShard> iterator = null;
-        boolean isClosed = false;
-
-        public LockingSpliterator()
-        {
-            super(commandShards.length, Spliterator.SIZED | Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE);
-        }
+        int i = 0;
 
         @Override
         public boolean tryAdvance(Consumer<? super CommandShard> action)
         {
-            Preconditions.checkState(!isClosed);
-            if (iterator == null)
+            if (i < commandShards.length)
             {
-                topologyLock.readLock().lock();
-                iterator = Iterators.forArray(commandShards);
+                CommandShard shard = commandShards[i++];
+                try
+                {
+                    shard.process(action).toCompletableFuture().get();
+                }
+                catch (InterruptedException | ExecutionException e)
+                {
+                    throw new RuntimeException(e);
+                }
+
             }
-
-            if (!iterator.hasNext())
-                return false;
-
-            action.accept(iterator.next());
-            return iterator.hasNext();
+            return i < commandShards.length;
         }
 
-        void close()
+        @Override
+        public void forEachRemaining(Consumer<? super CommandShard> action)
         {
-            if (iterator != null)
-                topologyLock.readLock().unlock();
-            isClosed = false;
+            if (i >= commandShards.length)
+                return;
+
+            CountDownLatch latch = new CountDownLatch(commandShards.length - i);
+            for (; i<commandShards.length; i++)
+                commandShards[i].process(action).thenRun(latch::countDown);
+
+            try
+            {
+                latch.await();
+            }
+            catch (InterruptedException e)
+            {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public Spliterator<CommandShard> trySplit()
+        {
+            return null;
+        }
+
+        @Override
+        public long estimateSize()
+        {
+            return commandShards.length;
+        }
+
+        @Override
+        public int characteristics()
+        {
+            return Spliterator.SIZED | Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE;
         }
     }
 }

@@ -3,12 +3,10 @@ package accord.topology;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.txn.Keys;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class KeyRanges implements Iterable<KeyRange>
 {
@@ -63,6 +61,16 @@ public class KeyRanges implements Iterable<KeyRange>
     public int size()
     {
         return ranges.length;
+    }
+
+    public KeyRange get(int i)
+    {
+        return ranges[i];
+    }
+
+    public boolean isEmpty()
+    {
+        return size() == 0;
     }
 
     public KeyRanges select(int[] indexes)
@@ -127,6 +135,22 @@ public class KeyRanges implements Iterable<KeyRange>
                 result.add(thisRange);
         }
         return new KeyRanges(result.toArray(KeyRange[]::new));
+    }
+
+    /**
+     * Adds a set of non-overlapping ranges
+     */
+    public KeyRanges add(KeyRanges that)
+    {
+        KeyRange[] combined = new KeyRange[this.ranges.length + that.ranges.length];
+        System.arraycopy(this.ranges, 0, combined, 0, this.ranges.length);
+        System.arraycopy(that.ranges, 0, combined, this.ranges.length, that.ranges.length);
+        Arrays.sort(combined, Comparator.comparing(KeyRange::start));
+
+        for (int i=1; i<combined.length; i++)
+            Preconditions.checkArgument(combined[i].compareIntersecting(combined[i -1]) != 0);
+
+        return new KeyRanges(combined);
     }
 
 }
