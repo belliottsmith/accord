@@ -3,6 +3,7 @@ package accord.utils;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.impl.IntKey;
+import accord.topology.KeyRanges;
 import accord.txn.Keys;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,12 @@ public class KeyRangeTest
         {
             return new EndInclusiveIntRange(start, end);
         }
+
+        @Override
+        public KeyRanges split(int count)
+        {
+            return IntKey.splitRange(this, count, EndInclusiveIntRange::new);
+        }
     }
 
     private static class StartInclusiveIntRange extends KeyRange.StartInclusive<IntKey>
@@ -44,6 +51,12 @@ public class KeyRangeTest
         public KeyRange<IntKey> subRange(IntKey start, IntKey end)
         {
             return new StartInclusiveIntRange(start, end);
+        }
+
+        @Override
+        public KeyRanges split(int count)
+        {
+            return IntKey.splitRange(this, count, StartInclusiveIntRange::new);
         }
     }
 

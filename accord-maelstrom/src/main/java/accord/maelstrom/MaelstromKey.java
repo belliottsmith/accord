@@ -4,6 +4,8 @@ import java.io.IOException;
 
 import accord.api.Key;
 import accord.api.KeyRange;
+import accord.topology.KeyRanges;
+import com.google.common.base.Preconditions;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
@@ -21,6 +23,30 @@ public class MaelstromKey extends Datum<MaelstromKey> implements Key<MaelstromKe
         public KeyRange<MaelstromKey> subRange(MaelstromKey start, MaelstromKey end)
         {
             return new Range(start, end);
+        }
+
+        @Override
+        public KeyRanges split(int count)
+        {
+            Preconditions.checkArgument(start().kind == Kind.HASH);
+            Preconditions.checkArgument(end().kind == Kind.HASH);
+            int startHash = ((Hash) start().value).hash;
+            int endHash = ((Hash) end().value).hash;
+            int currentSize = endHash - startHash;
+            if (currentSize < count)
+                return new KeyRanges(new KeyRange[]{this});
+            int interval =  currentSize / count;
+
+            int last = 0;
+            KeyRange[] ranges = new KeyRange[count];
+            for (int i=0; i<count; i++)
+            {
+                int subStart = i > 0 ? last : startHash;
+                int subEnd = i < count - 1 ? subStart + interval : endHash;
+                ranges[i] = new Range(new MaelstromKey(Kind.HASH, new Hash(subStart)),
+                                      new MaelstromKey(Kind.HASH, new Hash(subEnd)));
+            }
+            return new KeyRanges(ranges);
         }
     }
 

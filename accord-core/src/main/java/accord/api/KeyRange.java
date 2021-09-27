@@ -1,5 +1,6 @@
 package accord.api;
 
+import accord.topology.KeyRanges;
 import accord.txn.Keys;
 import com.google.common.base.Preconditions;
 
@@ -96,6 +97,12 @@ public abstract class KeyRange<K extends Key<K>>
     public abstract boolean endInclusive();
 
     public abstract KeyRange<K> subRange(K start, K end);
+
+    /**
+     * Split this range into roughly equally sized subranges
+     * @param subRanges the number of subranges to create
+     */
+    public abstract KeyRanges split(int subRanges);
 
     @Override
     public boolean equals(Object o)
