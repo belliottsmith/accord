@@ -2,13 +2,17 @@ package accord.local;
 
 import accord.api.Key;
 import accord.api.KeyRange;
+import accord.api.Store;
 import accord.topology.KeyRanges;
+import accord.topology.Shard;
 import accord.topology.Shards;
 import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.TxnId;
 
+import java.util.HashSet;
 import java.util.NavigableMap;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -20,6 +24,8 @@ import java.util.function.Function;
 public abstract class CommandShard
 {
     private final int index;
+    private final Node node;
+    private final Store store;
 
     private static class RangeMapping
     {
@@ -34,9 +40,11 @@ public abstract class CommandShard
         }
     }
 
-    public CommandShard(int index)
+    public CommandShard(int index, Node node, Store store)
     {
         this.index = index;
+        this.node = node;
+        this.store = store;
     }
 
     private volatile RangeMapping rangeMap = RangeMapping.EMPTY;
@@ -44,6 +52,47 @@ public abstract class CommandShard
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
+
+    public Command command(TxnId txnId)
+    {
+        return commands.computeIfAbsent(txnId, id -> new Command(this, id));
+    }
+
+    public boolean hasCommand(TxnId txnId)
+    {
+        return commands.containsKey(txnId);
+    }
+
+    public CommandsForKey commandsForKey(Key key)
+    {
+        return commandsForKey.computeIfAbsent(key, ignore -> new CommandsForKey());
+    }
+
+    public boolean hasCommandsForKey(Key key)
+    {
+        return commandsForKey.containsKey(key);
+    }
+
+    public Store store()
+    {
+        return store;
+    }
+
+    public Node node()
+    {
+        return node;
+    }
+
+    public Set<Node.Id> nodesFor(Command command)
+    {
+        // TODO: filter pending nodes for reads
+        Set<Node.Id> result = new HashSet<>();
+        for (Shard shard : rangeMap.topology.forKeys(command.txn().keys))
+        {
+            result.addAll(shard.nodes);
+        }
+        return result;
+    }
 
     void updateTopology(Topology topology, KeyRanges added, KeyRanges removed)
     {
@@ -102,9 +151,9 @@ public abstract class CommandShard
 
     public static class Synchronized extends CommandShard
     {
-        public Synchronized(int index)
+        public Synchronized(int index, Node node, Store store)
         {
-            super(index);
+            super(index, node, store);
         }
 
         @Override
@@ -120,9 +169,9 @@ public abstract class CommandShard
     {
         private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
 
-        public SingleThread(int index)
+        public SingleThread(int index, Node node, Store store)
         {
-            super(index);
+            super(index, node, store);
             executor.setMaximumPoolSize(1);
         }
 
