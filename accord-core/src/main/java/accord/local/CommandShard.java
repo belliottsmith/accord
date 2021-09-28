@@ -9,11 +9,9 @@ import accord.topology.Shards;
 import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.TxnId;
+import com.google.common.base.Preconditions;
 
-import java.util.HashSet;
-import java.util.NavigableMap;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -37,7 +35,7 @@ public abstract class CommandShard
     private final Node node;
     private final Store store;
 
-    private static class RangeMapping
+    static class RangeMapping
     {
         private static final RangeMapping EMPTY = new RangeMapping(KeyRanges.EMPTY, Shards.EMPTY);
         private final KeyRanges ranges;
@@ -47,6 +45,27 @@ public abstract class CommandShard
         {
             this.ranges = ranges;
             this.topology = topology;
+        }
+
+        private static class Builder
+        {
+            private final Topology localTopology;
+            private final List<KeyRange> ranges;
+            private final List<Shard> shards;
+
+            public Builder(int minSize, Topology localTopology)
+            {
+                this.localTopology = localTopology;
+                this.ranges = new ArrayList<>(minSize);
+                this.shards = new ArrayList<>(minSize);
+            }
+
+            public void addMapping(KeyRange range, Shard shard)
+            {
+                Preconditions.checkArgument(shard.range.fullyContains(range));
+                ranges.add(range);
+                shards.add(shard);
+            }
         }
     }
 
@@ -108,6 +127,43 @@ public abstract class CommandShard
             result.addAll(shard.nodes);
         }
         return result;
+    }
+
+    static RangeMapping mapRanges(KeyRanges mergedRanges, Topology localTopology)
+    {
+        RangeMapping.Builder builder = new RangeMapping.Builder(mergedRanges.size(), localTopology);
+        int shardIdx = 0;
+        for (int rangeIdx=0; rangeIdx<mergedRanges.size(); rangeIdx++)
+        {
+            KeyRange mergedRange = mergedRanges.get(rangeIdx);
+            while (shardIdx < localTopology.size())
+            {
+                Shard shard = localTopology.get(shardIdx);
+
+                int cmp = shard.range.compareIntersecting(mergedRange);
+                if (cmp < 0)
+                    throw new IllegalStateException("mapped shards should always be intersecting or greater than the current shard");
+
+                if (cmp > 0)
+                {
+                    shardIdx++;
+                    continue;
+                }
+
+                if (shard.range.fullyContains(mergedRange))
+                {
+                    builder.addMapping(mergedRange, shard);
+                    continue;
+                }
+                else
+                {
+                    KeyRange intersection = mergedRange.intersection(shard.range);
+                    Preconditions.checkState(intersection.start().equals(mergedRange.start()));
+                    mergedRange = mergedRange.subRange(intersection.end(), mergedRange.end());
+                }
+            }
+        }
+        throw new UnsupportedOperationException();
     }
 
     void updateTopology(Topology topology, KeyRanges added, KeyRanges removed)
