@@ -191,11 +191,11 @@ public abstract class KeyRange<K extends Key<K>>
      * returns the index of the lowest key contained in this range
      * @param keys
      */
-    public int lowKeyIndex(Keys keys)
+    public int lowKeyIndex(Keys keys, int lowerBound, int upperBound)
     {
         if (keys.isEmpty()) return -1;
 
-        int i = keys.search(0, keys.size(), this,
+        int i = keys.search(lowerBound, upperBound, this,
                             (k, r) -> ((KeyRange) r).compareKey((Key) k) < 0 ? -1 : 1);
 
         if (i < 0) i = -1 - i;
@@ -203,5 +203,10 @@ public abstract class KeyRange<K extends Key<K>>
         if (i == 0 && !containsKey((K) keys.get(0))) i = -1;
 
         return i;
+    }
+
+    public int lowKeyIndex(Keys keys)
+    {
+        return lowKeyIndex(keys, 0, keys.size());
     }
 }

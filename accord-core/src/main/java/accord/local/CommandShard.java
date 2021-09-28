@@ -37,13 +37,16 @@ public abstract class CommandShard
 
     static class RangeMapping
     {
-        private static final RangeMapping EMPTY = new RangeMapping(KeyRanges.EMPTY, Shards.EMPTY);
-        private final KeyRanges ranges;
-        private final Topology topology;
+        private static final RangeMapping EMPTY = new RangeMapping(KeyRanges.EMPTY, new Shard[0], Shards.EMPTY);
+        final KeyRanges ranges;
+        final Shard[] shards;
+        final Topology topology;
 
-        public RangeMapping(KeyRanges ranges, Topology topology)
+        public RangeMapping(KeyRanges ranges, Shard[] shards, Topology topology)
         {
+            Preconditions.checkArgument(ranges.size() == shards.length);
             this.ranges = ranges;
+            this.shards = shards;
             this.topology = topology;
         }
 
@@ -65,6 +68,11 @@ public abstract class CommandShard
                 Preconditions.checkArgument(shard.range.fullyContains(range));
                 ranges.add(range);
                 shards.add(shard);
+            }
+
+            public RangeMapping build()
+            {
+                return new RangeMapping(new KeyRanges(ranges), shards.toArray(Shard[]::new), localTopology);
             }
         }
     }
@@ -120,12 +128,30 @@ public abstract class CommandShard
 
     public Set<Node.Id> nodesFor(Command command)
     {
-        // TODO: filter pending nodes for reads
+        RangeMapping mapping = rangeMap;
+        Keys keys = command.txn().keys;
+
         Set<Node.Id> result = new HashSet<>();
-        for (Shard shard : rangeMap.topology.forKeys(command.txn().keys))
+        int lowKeyIdx = 0;
+        for (int i=0; i<mapping.ranges.size(); i++)
         {
-            result.addAll(shard.nodes);
+            KeyRange range = mapping.ranges.get(i);
+            lowKeyIdx = range.lowKeyIndex(keys, lowKeyIdx, keys.size());
+
+            // all keys are less than the current range, so no other
+            // ranges will intersect with these keys
+            if (lowKeyIdx > keys.size())
+                break;
+
+            // all remaining keys are greater than this range, so go to the next one
+            if (lowKeyIdx < 0)
+                continue;
+
+            // otherwise this range intersects with the txn, so add it's shard's endpoings
+            // TODO: filter pending nodes for reads
+            result.addAll(mapping.shards[i].nodes);
         }
+
         return result;
     }
 
@@ -153,24 +179,25 @@ public abstract class CommandShard
                 if (shard.range.fullyContains(mergedRange))
                 {
                     builder.addMapping(mergedRange, shard);
-                    continue;
+                    break;
                 }
                 else
                 {
                     KeyRange intersection = mergedRange.intersection(shard.range);
                     Preconditions.checkState(intersection.start().equals(mergedRange.start()));
+                    builder.addMapping(intersection, shard);
                     mergedRange = mergedRange.subRange(intersection.end(), mergedRange.end());
+                    shardIdx++;
                 }
             }
         }
-        throw new UnsupportedOperationException();
+        return builder.build();
     }
 
     void updateTopology(Topology topology, KeyRanges added, KeyRanges removed)
     {
         KeyRanges newRanges = rangeMap.ranges.difference(removed).add(added).mergeTouching();
-        rangeMap = new RangeMapping(newRanges, topology);
-        // TODO: map ranges to shards
+        rangeMap = mapRanges(newRanges, topology);
 
         for (KeyRange range : removed)
         {

@@ -21,6 +21,11 @@ public class KeyRanges implements Iterable<KeyRange>
         this.ranges = ranges;
     }
 
+    public KeyRanges(List<KeyRange> ranges)
+    {
+        this(ranges.toArray(KeyRange[]::new));
+    }
+
     @Override
     public String toString()
     {
@@ -152,6 +157,11 @@ public class KeyRanges implements Iterable<KeyRange>
             Preconditions.checkArgument(combined[i].compareIntersecting(combined[i -1]) != 0);
 
         return new KeyRanges(combined);
+    }
+
+    public KeyRanges add(KeyRange range)
+    {
+        return add(new KeyRanges(new KeyRange[]{range}));
     }
 
     public KeyRanges mergeTouching()

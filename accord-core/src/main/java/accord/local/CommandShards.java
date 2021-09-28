@@ -39,7 +39,7 @@ public class CommandShards
         return stream().filter(commandShard -> commandShard.intersects(keys));
     }
 
-    private static List<KeyRanges> shardRanges(KeyRanges ranges, int shards)
+    static List<KeyRanges> shardRanges(KeyRanges ranges, int shards)
     {
         List<List<KeyRange>> sharded = new ArrayList<>(shards);
         for (int i=0; i<shards; i++)
