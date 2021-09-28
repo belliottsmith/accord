@@ -17,6 +17,9 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+/**
+ * Manages the single threaded metadata shards
+ */
 public class CommandShards
 {
     private Topology localTopology = Shards.EMPTY;
@@ -31,11 +34,12 @@ public class CommandShards
 
     public Stream<CommandShard> stream()
     {
-        return StreamSupport.stream(new CommandSpliterator(), false);
+        return StreamSupport.stream(new ShardSpliterator(), false);
     }
 
     public Stream<CommandShard> forKeys(Keys keys)
     {
+        // TODO: filter shards before sending to their thread?
         return stream().filter(commandShard -> commandShard.intersects(keys));
     }
 
@@ -70,7 +74,7 @@ public class CommandShards
         stream().forEach(commands -> commands.updateTopology(newTopology, sharded.get(commands.index()), removed));
     }
 
-    private class CommandSpliterator implements Spliterator<CommandShard>
+    private class ShardSpliterator implements Spliterator<CommandShard>
     {
         int i = 0;
 

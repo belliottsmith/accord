@@ -17,7 +17,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Single threaded subdivision of accord metadata
+ * // TODO: fix name
+ * Single threaded internal shard accord transaction metadata
  * possible better names:
  * MetaStore
  * MetaShard
@@ -237,16 +238,23 @@ public abstract class CommandShard
         }
     }
 
+    void process(Consumer<? super CommandShard> consumer, CompletableFuture<Void> future)
+    {
+        try
+        {
+            consumer.accept(this);
+            future.complete(null);
+        }
+        catch (Throwable e)
+        {
+            future.completeExceptionally(e);
+        }
+    }
+
+
     public abstract <R> CompletionStage<R> process(Function<? super CommandShard, R> function);
 
-    public CompletionStage<Void> process(Consumer<? super CommandShard> consumer)
-    {
-        return process(shard ->
-        {
-            consumer.accept(shard);
-            return null;
-        });
-    }
+    public abstract CompletionStage<Void> process(Consumer<? super CommandShard> consumer);
 
     public static class Synchronized extends CommandShard
     {
@@ -262,11 +270,51 @@ public abstract class CommandShard
             process(func, future);
             return future;
         }
+
+        @Override
+        public synchronized CompletionStage<Void> process(Consumer<? super CommandShard> consumer)
+        {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            process(consumer, future);
+            return future;
+        }
     }
 
     public static class SingleThread extends CommandShard
     {
         private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+
+        private class FunctionWrapper<R> extends CompletableFuture<R> implements Runnable
+        {
+            private final Function<? super CommandShard, R> function;
+
+            public FunctionWrapper(Function<? super CommandShard, R> function)
+            {
+                this.function = function;
+            }
+
+            @Override
+            public void run()
+            {
+                process(function, this);
+            }
+        }
+
+        private class ConsumerWrapper extends CompletableFuture<Void> implements Runnable
+        {
+            private final Consumer<? super CommandShard> consumer;
+
+            public ConsumerWrapper(Consumer<? super CommandShard> consumer)
+            {
+                this.consumer = consumer;
+            }
+
+            @Override
+            public void run()
+            {
+                process(consumer, this);
+            }
+        }
 
         public SingleThread(int index, Node node, Store store)
         {
@@ -277,8 +325,16 @@ public abstract class CommandShard
         @Override
         public <R> CompletionStage<R> process(Function<? super CommandShard, R> function)
         {
-            CompletableFuture<R> future = new CompletableFuture<>();
-            executor.execute(() -> process(function, future));
+            FunctionWrapper<R> future = new FunctionWrapper<>(function);
+            executor.execute(future);
+            return future;
+        }
+
+        @Override
+        public CompletionStage<Void> process(Consumer<? super CommandShard> consumer)
+        {
+            ConsumerWrapper future = new ConsumerWrapper(consumer);
+            executor.execute(future);
             return future;
         }
     }

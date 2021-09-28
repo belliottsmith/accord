@@ -55,7 +55,6 @@ public class KeyRangesTest
         Assertions.assertEquals(ranges(r(125, 135), r(140, 160), r(175, 200)),
                                 ranges(r(100, 200)).difference(
                                         ranges(r(0, 125), r(135, 140), r(160, 170), r(170, 175))));
-        // TODO: more range combinations
     }
 
     @Test

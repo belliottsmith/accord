@@ -161,6 +161,10 @@ public abstract class KeyRange<K extends Key<K>>
         return i >=0 && i < keys.size();
     }
 
+    /**
+     * Returns a range covering the overlapping parts of this and the provided range, returns
+     * null if the ranges do not overlap
+     */
     public KeyRange<K> intersection(KeyRange<K> that)
     {
         if (this.compareIntersecting(that) != 0)

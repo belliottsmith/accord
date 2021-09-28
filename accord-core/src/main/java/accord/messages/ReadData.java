@@ -102,7 +102,7 @@ public class ReadData implements Request
             {
                 isObsolete = true;
                 waitingOnReporter.cancel();
-                // TODO: this may result in redundant messages being sent when a shard is split across several command shards
+                // FIXME: this may result in redundant messages being sent when a shard is split across several command shards
                 node.send(command.commandShard.nodesFor(command), new Apply(command.txnId(), command.txn(), command.executeAt(), command.savedDeps(), command.writes(), command.result()));
                 node.reply(replyToNode, replyToMessage, new ReadNack());
             }
