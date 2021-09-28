@@ -2,6 +2,7 @@ package accord.impl.mock;
 
 import accord.NetworkFilter;
 import accord.impl.TopologyUtils;
+import accord.local.CommandStores;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.messages.Timeout;
@@ -25,7 +26,7 @@ import java.util.function.LongSupplier;
 
 import static accord.Utils.id;
 
-public class MockCluster implements Network
+public class MockCluster implements Network, AutoCloseable
 {
     private static final Logger logger = LoggerFactory.getLogger(MockCluster.class);
 
@@ -44,6 +45,12 @@ public class MockCluster implements Network
         this.random = new Random(config.seed);
 
         init();
+    }
+
+    @Override
+    public void close()
+    {
+        nodes.values().forEach(Node::shutdown);
     }
 
     private synchronized Id nextNodeId()

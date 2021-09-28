@@ -255,6 +255,8 @@ public abstract class CommandStore
 
     public abstract CompletionStage<Void> process(Consumer<? super CommandStore> consumer);
 
+    public abstract void shutdown();
+
     public static class Synchronized extends CommandStore
     {
         public Synchronized(int index, Node node, Store store)
@@ -277,11 +279,14 @@ public abstract class CommandStore
             process(consumer, future);
             return future;
         }
+
+        @Override
+        public void shutdown() {}
     }
 
     public static class SingleThread extends CommandStore
     {
-        private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+        private final ExecutorService executor;
 
         private class FunctionWrapper<R> extends CompletableFuture<R> implements Runnable
         {
@@ -318,7 +323,11 @@ public abstract class CommandStore
         public SingleThread(int index, Node node, Store store)
         {
             super(index, node, store);
-            executor.setMaximumPoolSize(1);
+            executor = Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r);
+                thread.setName(CommandStore.class.getSimpleName() + '[' + node.id() + ':' + index + ']');
+                return thread;
+            });
         }
 
         @Override
@@ -335,6 +344,12 @@ public abstract class CommandStore
             ConsumerWrapper future = new ConsumerWrapper(consumer);
             executor.execute(future);
             return future;
+        }
+
+        @Override
+        public void shutdown()
+        {
+            executor.shutdown();
         }
     }
 }

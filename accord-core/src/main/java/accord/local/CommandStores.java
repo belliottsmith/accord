@@ -32,6 +32,12 @@ public class CommandStores
             commandStores[i] = shardFactory.create(i, node, store);
     }
 
+    public synchronized void shutdown()
+    {
+        for (CommandStore commandStore : commandStores)
+            commandStore.shutdown();
+    }
+
     public Stream<CommandStore> stream()
     {
         return StreamSupport.stream(new ShardSpliterator(), false);

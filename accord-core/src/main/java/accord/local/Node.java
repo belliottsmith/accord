@@ -109,8 +109,13 @@ public class Node
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
         // TODO: test single threaded shard
-        this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SYNCHRONIZED);
+        this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
         this.commandStores.updateTopology(local);
+    }
+
+    public void shutdown()
+    {
+        commandStores.shutdown();
     }
 
     public Timestamp uniqueNow()

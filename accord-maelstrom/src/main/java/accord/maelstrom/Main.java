@@ -142,37 +142,44 @@ public class Main
             err.flush();
             sink.send(packet.src, new Body(Type.init_ok, Body.SENTINEL_MSG_ID, init.msg_id));
         }
-        while (true)
+        try
         {
-            String line = in.get();
-            if (line == null)
+            while (true)
             {
-                err.println("Received EOF; terminating");
+                String line = in.get();
+                if (line == null)
+                {
+                    err.println("Received EOF; terminating");
+                    err.flush();
+                    scheduler.stop();
+                    err.println("Terminated");
+                    err.flush();
+                    return;
+                }
+                err.println("Received " + (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)) + " " + line);
                 err.flush();
-                scheduler.stop();
-                err.println("Terminated");
-                err.flush();
-                return;
+                Packet next = Packet.parse(line);
+                switch (next.body.type)
+                {
+                    case txn:
+                        on.receive((MaelstromRequest)next.body, next.src, next.body.msg_id);
+                        break;
+                    default:
+                        if (next.body.in_reply_to > Body.SENTINEL_MSG_ID)
+                        {
+                            Reply reply = (Reply)((Wrapper)next.body).body;
+                            CallbackInfo callback = reply.isFinal() ? sink.callbacks.remove(next.body.in_reply_to)
+                                    : sink.callbacks.get(next.body.in_reply_to);
+                            if (callback != null)
+                                scheduler.now(() -> callback.callback.onSuccess(next.src, reply));
+                        }
+                        else on.receive((Request)((Wrapper)next.body).body, next.src, next.body.msg_id);
+                }
             }
-            err.println("Received " + (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)) + " " + line);
-            err.flush();
-            Packet next = Packet.parse(line);
-            switch (next.body.type)
-            {
-                case txn:
-                    on.receive((MaelstromRequest)next.body, next.src, next.body.msg_id);
-                    break;
-                default:
-                    if (next.body.in_reply_to > Body.SENTINEL_MSG_ID)
-                    {
-                        Reply reply = (Reply)((Wrapper)next.body).body;
-                        CallbackInfo callback = reply.isFinal() ? sink.callbacks.remove(next.body.in_reply_to)
-                                                                : sink.callbacks.get(next.body.in_reply_to);
-                        if (callback != null)
-                            scheduler.now(() -> callback.callback.onSuccess(next.src, reply));
-                    }
-                    else on.receive((Request)((Wrapper)next.body).body, next.src, next.body.msg_id);
-            }
+        }
+        finally
+        {
+            on.shutdown();
         }
     }
 
