@@ -18,7 +18,7 @@ import java.util.function.Function;
 
 /**
  * // TODO: fix name
- * Single threaded internal shard accord transaction metadata
+ * Single threaded internal shard of accord transaction metadata
  * possible better names:
  * MetaStore
  * MetaShard
@@ -133,15 +133,15 @@ public abstract class CommandShard
         Keys keys = command.txn().keys;
 
         Set<Node.Id> result = new HashSet<>();
-        int lowKeyIdx = 0;
+        int lowerBound = 0;
         for (int i=0; i<mapping.ranges.size(); i++)
         {
             KeyRange range = mapping.ranges.get(i);
-            lowKeyIdx = range.lowKeyIndex(keys, lowKeyIdx, keys.size());
+            int lowKeyIdx = range.lowKeyIndex(keys, lowerBound, keys.size());
 
             // all keys are less than the current range, so no other
             // ranges will intersect with these keys
-            if (lowKeyIdx > keys.size())
+            if (lowKeyIdx >= keys.size())
                 break;
 
             // all remaining keys are greater than this range, so go to the next one
@@ -151,6 +151,7 @@ public abstract class CommandShard
             // otherwise this range intersects with the txn, so add it's shard's endpoings
             // TODO: filter pending nodes for reads
             result.addAll(mapping.shards[i].nodes);
+            lowerBound = lowKeyIdx;
         }
 
         return result;
