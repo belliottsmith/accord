@@ -100,7 +100,7 @@ public abstract class KeyRange<K extends Key<K>>
 
     /**
      * Split this range into roughly equally sized subranges
-     * @param subRanges the number of subranges to create
+     * @param count the number of subranges to create
      */
     public abstract KeyRanges split(int count);
 
@@ -159,6 +159,16 @@ public abstract class KeyRange<K extends Key<K>>
     {
         int i = lowKeyIndex(keys);
         return i >=0 || i < keys.size();
+    }
+
+    public KeyRange<K> intersection(KeyRange<K> that)
+    {
+        if (this.compareIntersecting(that) != 0)
+            return null;
+
+        K start = this.start.compareTo(that.start) > 0 ? this.start : that.start;
+        K end = this.end.compareTo(that.end) < 0 ? this.end : that.end;
+        return subRange(start, end);
     }
 
     /**

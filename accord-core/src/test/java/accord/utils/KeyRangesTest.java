@@ -66,4 +66,12 @@ public class KeyRangesTest
 
         Assertions.assertThrows(IllegalArgumentException.class, () -> ranges(r(0, 50)).add(ranges(r(25, 75))));
     }
+
+    @Test
+    void mergeTouchingTest()
+    {
+        Assertions.assertEquals(ranges(r(0, 400)), ranges(r(0, 100), r(100, 200), r(200, 300), r(300, 400)).mergeTouching());
+        Assertions.assertEquals(ranges(r(0, 200), r(300, 400)), ranges(r(0, 100), r(100, 200), r(300, 400)).mergeTouching());
+        Assertions.assertEquals(ranges(r(0, 100), r(200, 400)), ranges(r(0, 100), r(200, 300), r(300, 400)).mergeTouching());
+    }
 }

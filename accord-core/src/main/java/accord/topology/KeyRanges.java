@@ -153,4 +153,26 @@ public class KeyRanges implements Iterable<KeyRange>
         return new KeyRanges(combined);
     }
 
+    public KeyRanges mergeTouching()
+    {
+        if (ranges.length == 0)
+            return this;
+        List<KeyRange> result = new ArrayList<>(ranges.length);
+        KeyRange current = ranges[0];
+        for (int i=1; i<ranges.length; i++)
+        {
+            if (current.end().equals(ranges[i].start()))
+            {
+                current = current.subRange(current.start(), ranges[i].end());
+            }
+            else
+            {
+                result.add(current);
+                current = ranges[i];
+            }
+        }
+        result.add(current);
+        return new KeyRanges(result.toArray(KeyRange[]::new));
+    }
+
 }

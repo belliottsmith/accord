@@ -56,7 +56,7 @@ public class CommandShards
         List<KeyRanges> result = new ArrayList<>(shards);
         for (int i=0; i<shards; i++)
         {
-            result.add(new KeyRanges(sharded.get(i).stream().toArray(KeyRange[]::new)));
+            result.add(new KeyRanges(sharded.get(i).toArray(KeyRange[]::new)));
         }
 
         return result;
@@ -64,17 +64,10 @@ public class CommandShards
 
     public synchronized void updateTopology(Topology newTopology)
     {
-        // TODO: maybe support rebalancing between shards
         KeyRanges removed = localTopology.getRanges().difference(newTopology.getRanges());
-        if (!removed.isEmpty())
-            stream().forEach(commands -> commands.removeRanges(removed));
-
         KeyRanges added = newTopology.getRanges().difference(localTopology.getRanges());
-        if (!added.isEmpty())
-        {
-            List<KeyRanges> sharded = shardRanges(added, commandShards.length);
-            stream().forEach(commands -> commands.addRanges(sharded.get(commands.index())));
-        }
+        List<KeyRanges> sharded = shardRanges(added, commandShards.length);
+        stream().forEach(commands -> commands.updateTopology(newTopology, sharded.get(commands.index()), removed));
     }
 
     private class CommandSpliterator implements Spliterator<CommandShard>

@@ -3,6 +3,8 @@ package accord.local;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.topology.KeyRanges;
+import accord.topology.Shards;
+import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.TxnId;
 
@@ -19,19 +21,36 @@ public abstract class CommandShard
 {
     private final int index;
 
+    private static class RangeMapping
+    {
+        private static final RangeMapping EMPTY = new RangeMapping(KeyRanges.EMPTY, Shards.EMPTY);
+        private final KeyRanges ranges;
+        private final Topology topology;
+
+        public RangeMapping(KeyRanges ranges, Topology topology)
+        {
+            this.ranges = ranges;
+            this.topology = topology;
+        }
+    }
+
     public CommandShard(int index)
     {
         this.index = index;
     }
 
-    private volatile KeyRanges ranges = KeyRanges.EMPTY;
+    private volatile RangeMapping rangeMap = RangeMapping.EMPTY;
+
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
 
-    void removeRanges(KeyRanges removed)
+    void updateTopology(Topology topology, KeyRanges added, KeyRanges removed)
     {
-        ranges = ranges.difference(removed);
+        KeyRanges newRanges = rangeMap.ranges.difference(removed).add(added).mergeTouching();
+        rangeMap = new RangeMapping(newRanges, topology);
+        // TODO: map ranges to shards
+
         for (KeyRange range : removed)
         {
             NavigableMap<Key, CommandsForKey> subMap = commandsForKey.subMap(range.start(), range.startInclusive(), range.end(), range.endInclusive());
@@ -42,15 +61,10 @@ public abstract class CommandShard
                     continue;
 
                 for (Command command : forKey)
-                    if (command.txn() != null && !ranges.intersects(command.txn().keys))
+                    if (command.txn() != null && !rangeMap.ranges.intersects(command.txn().keys))
                         commands.remove(command.txnId());
             }
         }
-    }
-
-    void addRanges(KeyRanges added)
-    {
-        ranges = ranges.add(added);
     }
 
     int index()
@@ -60,7 +74,7 @@ public abstract class CommandShard
 
     public boolean intersects(Keys keys)
     {
-        return ranges.intersects(keys);
+        return rangeMap.ranges.intersects(keys);
     }
 
     <R> void process(Function<? super CommandShard, R> function, CompletableFuture<R> future)

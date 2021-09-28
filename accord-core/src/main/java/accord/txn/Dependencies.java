@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.TreeMap;
 
 import accord.local.Command;
+import accord.local.CommandShard;
 import accord.topology.Shard;
 import com.google.common.annotations.VisibleForTesting;
 
@@ -71,6 +72,14 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
                    .stream()
                    .filter(e -> e.getValue().keys().stream().anyMatch(shard::contains))
                    .map(Entry::getKey)::iterator;
+    }
+
+    public Iterable<TxnId> on(CommandShard commands)
+    {
+        return deps.entrySet()
+                .stream()
+                .filter(e -> commands.intersects(e.getValue().keys()))
+                .map(Entry::getKey)::iterator;
     }
 
     @Override
