@@ -1,6 +1,5 @@
 package accord.coordinate;
 
-import accord.local.Instance;
 import accord.local.Node;
 import accord.impl.mock.MockCluster;
 import accord.impl.IntKey;
@@ -13,7 +12,6 @@ import accord.txn.Txn;
 import accord.txn.TxnId;
 
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.CompletionStage;
@@ -26,15 +24,14 @@ import static accord.Utils.writeTxn;
 
 public class RecoverTest
 {
-
-    private static Instance getInstance(Node node, Key key)
+    private static CommandShard getInstance(Node node, Key key)
     {
         return node.local(key).orElseThrow();
     }
 
     private static Command getCommand(Node node, Key key, TxnId txnId)
     {
-        Instance instance = getInstance(node, key);
+        CommandShard instance = getInstance(node, key);
         Assertions.assertTrue(instance.hasCommand(txnId));
         return instance.command(txnId);
     }
@@ -49,7 +46,7 @@ public class RecoverTest
 
     private static void assertMissing(Node node, Key key, TxnId txnId)
     {
-        Instance instance = getInstance(node, key);
+        CommandShard instance = getInstance(node, key);
         Assertions.assertFalse(instance.hasCommand(txnId));
     }
 

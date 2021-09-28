@@ -1,6 +1,5 @@
 package accord.messages;
 
-import accord.local.Instance;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.MessageSink;
@@ -53,7 +52,7 @@ public class PreAcceptTest
         Node node = createNode(ID1, messageSink, clock);
 
         IntKey key = IntKey.key(10);
-        Instance instance = node.local(key).orElseThrow();
+        CommandShard instance = node.local(key).orElseThrow();
         Assertions.assertFalse(instance.hasCommandsForKey(key));
 
         TxnId txnId = clock.idForNode(ID2);
@@ -79,7 +78,7 @@ public class PreAcceptTest
         Node node = createNode(ID1, messageSink, clock);
 
         IntKey key = IntKey.key(10);
-        Instance instance = node.local(key).orElseThrow();
+        CommandShard instance = node.local(key).orElseThrow();
         Assertions.assertFalse(instance.hasCommandsForKey(key));
 
         TxnId txnId = clock.idForNode(ID2);

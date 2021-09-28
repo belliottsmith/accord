@@ -23,6 +23,13 @@ import java.util.function.Function;
  */
 public abstract class CommandShard
 {
+    public interface Factory
+    {
+        CommandShard create(int index, Node node, Store store);
+        Factory SYNCHRONIZED = Synchronized::new;
+        Factory SINGLE_THREAD = SingleThread::new;
+    }
+
     private final int index;
     private final Node node;
     private final Store store;
@@ -81,6 +88,12 @@ public abstract class CommandShard
     public Node node()
     {
         return node;
+    }
+
+    public KeyRanges ranges()
+    {
+        // TODO: check thread safety of callers
+        return rangeMap.ranges;
     }
 
     public Set<Node.Id> nodesFor(Command command)

@@ -1,6 +1,7 @@
 package accord.local;
 
 import accord.api.KeyRange;
+import accord.api.Store;
 import accord.topology.KeyRanges;
 import accord.topology.Shards;
 import accord.topology.Topology;
@@ -10,10 +11,9 @@ import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Spliterator;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -22,11 +22,11 @@ public class CommandShards
     private Topology localTopology = Shards.EMPTY;
     private final CommandShard[] commandShards;
 
-    public CommandShards(int num, Supplier<CommandShard> commandShardConstructor)
+    public CommandShards(int num, Node node, Store store, CommandShard.Factory shardFactory)
     {
         this.commandShards = new CommandShard[num];
         for (int i=0; i<num; i++)
-            commandShards[i] = commandShardConstructor.get();
+            commandShards[i] = shardFactory.create(i, node, store);
     }
 
     public Stream<CommandShard> stream()
@@ -99,17 +99,23 @@ public class CommandShards
             if (i >= commandShards.length)
                 return;
 
-            CountDownLatch latch = new CountDownLatch(commandShards.length - i);
+            CompletableFuture<Void>[] futures = new CompletableFuture[commandShards.length - i];
             for (; i<commandShards.length; i++)
-                commandShards[i].process(action).thenRun(latch::countDown);
+                futures[i] = commandShards[i].process(action).toCompletableFuture();
 
             try
             {
-                latch.await();
+                for (CompletableFuture<Void> future : futures)
+                    future.get();
             }
             catch (InterruptedException e)
             {
                 throw new RuntimeException(e);
+            }
+            catch (ExecutionException e)
+            {
+                Throwable cause = e.getCause();
+                throw new RuntimeException(cause != null ? cause : e);
             }
         }
 

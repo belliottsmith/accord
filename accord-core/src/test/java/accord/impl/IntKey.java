@@ -46,7 +46,7 @@ public class IntKey implements Key<IntKey>
         for (int i=0; i<count; i++)
         {
             int subStart = nextStart;
-            int subEnd = i < count - 1 ? start + interval : end;
+            int subEnd = i < count - 1 ? subStart + interval : end;
             ranges[i] = ctor.apply(key(subStart), key(subEnd));
             nextStart = subEnd;
         }

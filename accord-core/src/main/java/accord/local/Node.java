@@ -26,9 +26,12 @@ import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Node
 {
+    private static final Logger logger = LoggerFactory.getLogger(Node.class);
     public static class Id implements Comparable<Id>
     {
         public static final Id NONE = new Id(0);
@@ -70,10 +73,17 @@ public class Node
         }
     }
 
+    public static int numCommandShards()
+    {
+        // TODO: make configurable
+        logger.warn("TODO: using hardcoded value for number of command shards, make configurable");
+        return 8;
+    }
+
+    private final CommandShards commandShards;
     private final Id id;
     private final Topology cluster;
     private final Shards local;
-    private final Instance[] instances;
     private final MessageSink messageSink;
     private final Random random;
 
@@ -96,11 +106,11 @@ public class Node
         this.now = new AtomicReference<>(new Timestamp(nowSupplier.getAsLong(), 0, id));
         this.local = local;
         this.messageSink = messageSink;
-        this.instances = new Instance[local.size()];
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        for (int i = 0 ; i < instances.length ; ++i)
-            instances[i] = new Instance(local.get(i), this, dataSupplier.get());
+        // TODO: test single threaded shard
+        this.commandShards = new CommandShards(numCommandShards(), this, dataSupplier.get(), CommandShard.Factory.SYNCHRONIZED);
+        this.commandShards.updateTopology(local);
     }
 
     public Timestamp uniqueNow()
@@ -136,13 +146,12 @@ public class Node
         return cluster;
     }
 
-    public Stream<Instance> local(Keys keys)
+    public Stream<CommandShard> local(Keys keys)
     {
-        // TODO: efficiency
-        return Stream.of(local.select(keys, instances, Instance[]::new));
+        return commandShards.forKeys(keys);
     }
 
-    public Optional<Instance> local(Key key)
+    public Optional<CommandShard> local(Key key)
     {
         return local(Keys.of(key)).reduce((i1, i2) -> {
             throw new IllegalStateException("more than one instance encountered for key");
@@ -188,6 +197,12 @@ public class Node
             if (alreadyContacted.add(node))
                 send(node, send, callback);
         });
+    }
+
+    public <T> void send(Collection<Id> to, Request send)
+    {
+        for (Id dst: to)
+            send(dst, send);
     }
 
     // send to a specific node

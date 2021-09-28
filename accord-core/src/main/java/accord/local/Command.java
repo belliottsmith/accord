@@ -22,7 +22,7 @@ import static accord.local.Status.ReadyToExecute;
 
 public class Command implements Listener, Consumer<Listener>
 {
-    public final Instance instance;
+    public final CommandShard instance;
     private final TxnId txnId;
     private Txn txn;
     private Ballot promised = Ballot.ZERO, accepted = Ballot.ZERO;
@@ -38,7 +38,7 @@ public class Command implements Listener, Consumer<Listener>
 
     private final Listeners listeners = new Listeners();
 
-    public Command(Instance instance, TxnId id)
+    public Command(CommandShard instance, TxnId id)
     {
         this.instance = instance;
         this.txnId = id;
@@ -159,7 +159,7 @@ public class Command implements Listener, Consumer<Listener>
         this.waitingOnCommit = new TreeMap<>();
         this.waitingOnApply = new TreeMap<>();
 
-        for (TxnId id : savedDeps().on(instance.shard))
+        for (TxnId id : savedDeps().on(instance))
         {
             Command command = instance.command(id);
             switch (command.status)

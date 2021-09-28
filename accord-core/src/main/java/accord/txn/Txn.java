@@ -4,10 +4,8 @@ import java.util.Comparator;
 import java.util.stream.Stream;
 
 import accord.api.*;
-import accord.local.Command;
-import accord.local.CommandsForKey;
-import accord.local.Instance;
-import accord.local.Node;
+import accord.local.*;
+import accord.topology.KeyRanges;
 
 public class Txn
 {
@@ -74,32 +72,32 @@ public class Txn
         return "read:" + read.toString() + (update != null ? ", update:" + update : "");
     }
 
-    public Data read(KeyRange range, Store store)
+    public Data read(KeyRanges range, Store store)
     {
         return read.read(range, store);
     }
 
     public Data read(Command command)
     {
-        Instance instance = command.instance;
-        return read(instance.shard.range, instance.store());
+        CommandShard instance = command.instance;
+        return read(instance.ranges(), instance.store());
     }
 
     // TODO: move these somewhere else?
-    public Stream<Instance> local(Node node)
+    public Stream<CommandShard> local(Node node)
     {
         return node.local(keys());
     }
 
-    public Timestamp maxConflict(Instance instance)
+    public Timestamp maxConflict(CommandShard commands)
     {
-        return maxConflict(instance, keys());
+        return maxConflict(commands, keys());
     }
 
-    public Stream<Command> conflictsMayExecuteBefore(Instance instance, Timestamp mayExecuteBefore)
+    public Stream<Command> conflictsMayExecuteBefore(CommandShard commands, Timestamp mayExecuteBefore)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = instance.commandsForKey(key);
+            CommandsForKey forKey = commands.commandsForKey(key);
             return Stream.concat(
             forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
             // TODO: only return latest of Committed?
@@ -108,7 +106,7 @@ public class Txn
         });
     }
 
-    public Stream<Command> uncommittedStartedBefore(Instance instance, TxnId startedBefore)
+    public Stream<Command> uncommittedStartedBefore(CommandShard instance, TxnId startedBefore)
     {
         return keys().stream().flatMap(key -> {
             CommandsForKey forKey = instance.commandsForKey(key);
@@ -116,7 +114,7 @@ public class Txn
         });
     }
 
-    public Stream<Command> committedStartedBefore(Instance instance, TxnId startedBefore)
+    public Stream<Command> committedStartedBefore(CommandShard instance, TxnId startedBefore)
     {
         return keys().stream().flatMap(key -> {
             CommandsForKey forKey = instance.commandsForKey(key);
@@ -124,7 +122,7 @@ public class Txn
         });
     }
 
-    public Stream<Command> uncommittedStartedAfter(Instance instance, TxnId startedAfter)
+    public Stream<Command> uncommittedStartedAfter(CommandShard instance, TxnId startedAfter)
     {
         return keys().stream().flatMap(key -> {
             CommandsForKey forKey = instance.commandsForKey(key);
@@ -132,7 +130,7 @@ public class Txn
         });
     }
 
-    public Stream<Command> committedExecutesAfter(Instance instance, TxnId startedAfter)
+    public Stream<Command> committedExecutesAfter(CommandShard instance, TxnId startedAfter)
     {
         return keys().stream().flatMap(key -> {
             CommandsForKey forKey = instance.commandsForKey(key);
@@ -140,16 +138,16 @@ public class Txn
         });
     }
 
-    public void register(Instance instance, Command command)
+    public void register(CommandShard commands, Command command)
     {
-        assert instance == command.instance;
-        keys().forEach(key -> instance.commandsForKey(key).register(command));
+        assert commands == command.instance;
+        keys().forEach(key -> commands.commandsForKey(key).register(command));
     }
 
-    protected Timestamp maxConflict(Instance instance, Keys keys)
+    protected Timestamp maxConflict(CommandShard commands, Keys keys)
     {
         return keys.stream()
-                   .map(instance::commandsForKey)
+                   .map(commands::commandsForKey)
                    .map(CommandsForKey::max)
                    .max(Comparator.naturalOrder())
                    .orElse(Timestamp.NONE);
