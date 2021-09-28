@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-public class CommandShardTest
+public class CommandStoreTest
 {
     @Test
     void topologyChangeTest()
@@ -31,7 +31,7 @@ public class CommandShardTest
         return shards;
     }
 
-    private static void assertMapping(KeyRanges ranges, Shard[] shards, CommandShard.RangeMapping mapping)
+    private static void assertMapping(KeyRanges ranges, Shard[] shards, CommandStore.RangeMapping mapping)
     {
         Assertions.assertEquals(ranges, mapping.ranges);
         Assertions.assertArrayEquals(shards, mapping.shards);
@@ -55,16 +55,16 @@ public class CommandShardTest
         Topology topology = TopologyUtils.initialTopology(ids, ranges, 3);
         Topology local = topology.forNode(ids.get(0));
 
-        KeyRanges shards = CommandShards.shardRanges(local.getRanges(), 10).get(0);
+        KeyRanges shards = CommandStores.shardRanges(local.getRanges(), 10).get(0);
         Assertions.assertEquals(ranges(r(0, 10), r(300, 310), r(400, 410)), shards);
 
         assertMapping(shards, shards(local, 0, 1, 2),
-                      CommandShard.mapRanges(shards, local));
+                      CommandStore.mapRanges(shards, local));
         assertMapping(ranges(r(0, 10), r(300, 310), r(390, 400), r(400, 410)), shards(local, 0, 1, 1, 2),
-                      CommandShard.mapRanges(ranges(r(0, 10), r(300, 310), r(390, 410)), local));
+                      CommandStore.mapRanges(ranges(r(0, 10), r(300, 310), r(390, 410)), local));
 
         assertMapping(ranges(r(0, 10), r(300, 310), r(350, 360), r(400, 410)), shards(local, 0, 1, 1, 2),
-                      CommandShard.mapRanges(ranges(r(0, 10), r(300, 310), r(350, 360), r(400, 410)), local));
+                      CommandStore.mapRanges(ranges(r(0, 10), r(300, 310), r(350, 360), r(400, 410)), local));
 
     }
 }

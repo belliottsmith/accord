@@ -20,24 +20,24 @@ import java.util.stream.StreamSupport;
 /**
  * Manages the single threaded metadata shards
  */
-public class CommandShards
+public class CommandStores
 {
     private Topology localTopology = Shards.EMPTY;
-    private final CommandShard[] commandShards;
+    private final CommandStore[] commandStores;
 
-    public CommandShards(int num, Node node, Store store, CommandShard.Factory shardFactory)
+    public CommandStores(int num, Node node, Store store, CommandStore.Factory shardFactory)
     {
-        this.commandShards = new CommandShard[num];
+        this.commandStores = new CommandStore[num];
         for (int i=0; i<num; i++)
-            commandShards[i] = shardFactory.create(i, node, store);
+            commandStores[i] = shardFactory.create(i, node, store);
     }
 
-    public Stream<CommandShard> stream()
+    public Stream<CommandStore> stream()
     {
         return StreamSupport.stream(new ShardSpliterator(), false);
     }
 
-    public Stream<CommandShard> forKeys(Keys keys)
+    public Stream<CommandStore> forKeys(Keys keys)
     {
         // TODO: filter shards before sending to their thread?
         return stream().filter(commandShard -> commandShard.intersects(keys));
@@ -70,20 +70,20 @@ public class CommandShards
     {
         KeyRanges removed = localTopology.getRanges().difference(newTopology.getRanges());
         KeyRanges added = newTopology.getRanges().difference(localTopology.getRanges());
-        List<KeyRanges> sharded = shardRanges(added, commandShards.length);
+        List<KeyRanges> sharded = shardRanges(added, commandStores.length);
         stream().forEach(commands -> commands.updateTopology(newTopology, sharded.get(commands.index()), removed));
     }
 
-    private class ShardSpliterator implements Spliterator<CommandShard>
+    private class ShardSpliterator implements Spliterator<CommandStore>
     {
         int i = 0;
 
         @Override
-        public boolean tryAdvance(Consumer<? super CommandShard> action)
+        public boolean tryAdvance(Consumer<? super CommandStore> action)
         {
-            if (i < commandShards.length)
+            if (i < commandStores.length)
             {
-                CommandShard shard = commandShards[i++];
+                CommandStore shard = commandStores[i++];
                 try
                 {
                     shard.process(action).toCompletableFuture().get();
@@ -94,18 +94,18 @@ public class CommandShards
                 }
 
             }
-            return i < commandShards.length;
+            return i < commandStores.length;
         }
 
         @Override
-        public void forEachRemaining(Consumer<? super CommandShard> action)
+        public void forEachRemaining(Consumer<? super CommandStore> action)
         {
-            if (i >= commandShards.length)
+            if (i >= commandStores.length)
                 return;
 
-            CompletableFuture<Void>[] futures = new CompletableFuture[commandShards.length - i];
-            for (; i<commandShards.length; i++)
-                futures[i] = commandShards[i].process(action).toCompletableFuture();
+            CompletableFuture<Void>[] futures = new CompletableFuture[commandStores.length - i];
+            for (; i< commandStores.length; i++)
+                futures[i] = commandStores[i].process(action).toCompletableFuture();
 
             try
             {
@@ -124,7 +124,7 @@ public class CommandShards
         }
 
         @Override
-        public Spliterator<CommandShard> trySplit()
+        public Spliterator<CommandStore> trySplit()
         {
             return null;
         }
@@ -132,7 +132,7 @@ public class CommandShards
         @Override
         public long estimateSize()
         {
-            return commandShards.length;
+            return commandStores.length;
         }
 
         @Override

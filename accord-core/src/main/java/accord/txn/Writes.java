@@ -1,7 +1,7 @@
 package accord.txn;
 
 import accord.api.Write;
-import accord.local.CommandShard;
+import accord.local.CommandStore;
 
 public class Writes
 {
@@ -16,10 +16,10 @@ public class Writes
         this.write = write;
     }
 
-    public void apply(CommandShard commandShard)
+    public void apply(CommandStore commandStore)
     {
         if (write != null)
-            write.apply(commandShard.ranges(), executeAt, commandShard.store());
+            write.apply(commandStore.ranges(), executeAt, commandStore.store());
     }
 
     @Override

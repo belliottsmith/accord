@@ -5,8 +5,6 @@ import java.util.stream.Collectors;
 
 import accord.local.*;
 import accord.local.Node.Id;
-import accord.messages.Reply;
-import accord.messages.Request;
 import accord.txn.TxnId;
 import accord.txn.Keys;
 
@@ -57,7 +55,7 @@ public class WaitOnCommit implements Request
 
         synchronized void setup(TxnId txnId, Keys keys)
         {
-            List<CommandShard> instances = node.local(keys).collect(Collectors.toList());
+            List<CommandStore> instances = node.local(keys).collect(Collectors.toList());
             waitingOn = instances.size();
             instances.forEach(instance -> {
                 Command command = instance.command(txnId);

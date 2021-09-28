@@ -24,16 +24,16 @@ import static accord.Utils.writeTxn;
 
 public class RecoverTest
 {
-    private static CommandShard getCommandShard(Node node, Key key)
+    private static CommandStore getCommandShard(Node node, Key key)
     {
         return node.local(key).orElseThrow();
     }
 
     private static Command getCommand(Node node, Key key, TxnId txnId)
     {
-        CommandShard commandShard = getCommandShard(node, key);
-        Assertions.assertTrue(commandShard.hasCommand(txnId));
-        return commandShard.command(txnId);
+        CommandStore commandStore = getCommandShard(node, key);
+        Assertions.assertTrue(commandStore.hasCommand(txnId));
+        return commandStore.command(txnId);
     }
 
     private static void assertStatus(Node node, Key key, TxnId txnId, Status status)
@@ -46,8 +46,8 @@ public class RecoverTest
 
     private static void assertMissing(Node node, Key key, TxnId txnId)
     {
-        CommandShard commandShard = getCommandShard(node, key);
-        Assertions.assertFalse(commandShard.hasCommand(txnId));
+        CommandStore commandStore = getCommandShard(node, key);
+        Assertions.assertFalse(commandStore.hasCommand(txnId));
     }
 
     private static void assertTimeout(CompletionStage<?> f)

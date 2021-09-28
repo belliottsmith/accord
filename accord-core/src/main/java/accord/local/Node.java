@@ -80,7 +80,7 @@ public class Node
         return 8;
     }
 
-    private final CommandShards commandShards;
+    private final CommandStores commandStores;
     private final Id id;
     private final Topology cluster;
     private final Shards local;
@@ -109,8 +109,8 @@ public class Node
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
         // TODO: test single threaded shard
-        this.commandShards = new CommandShards(numCommandShards(), this, dataSupplier.get(), CommandShard.Factory.SYNCHRONIZED);
-        this.commandShards.updateTopology(local);
+        this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SYNCHRONIZED);
+        this.commandStores.updateTopology(local);
     }
 
     public Timestamp uniqueNow()
@@ -146,12 +146,12 @@ public class Node
         return cluster;
     }
 
-    public Stream<CommandShard> local(Keys keys)
+    public Stream<CommandStore> local(Keys keys)
     {
-        return commandShards.forKeys(keys);
+        return commandStores.forKeys(keys);
     }
 
-    public Optional<CommandShard> local(Key key)
+    public Optional<CommandStore> local(Key key)
     {
         return local(Keys.of(key)).reduce((i1, i2) -> {
             throw new IllegalStateException("more than one instance encountered for key");

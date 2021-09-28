@@ -4,7 +4,7 @@ import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
 
-import accord.local.CommandShard;
+import accord.local.CommandStore;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.txn.Timestamp;
@@ -111,10 +111,10 @@ public class PreAccept implements Request
         }
     }
 
-    static Dependencies calculateDeps(CommandShard commandShard, TxnId txnId, Txn txn, Timestamp executeAt)
+    static Dependencies calculateDeps(CommandStore commandStore, TxnId txnId, Txn txn, Timestamp executeAt)
     {
         NavigableMap<TxnId, Txn> deps = new TreeMap<>();
-        txn.conflictsMayExecuteBefore(commandShard, executeAt).forEach(conflict -> {
+        txn.conflictsMayExecuteBefore(commandStore, executeAt).forEach(conflict -> {
             if (conflict.txnId().equals(txnId))
                 return;
 
