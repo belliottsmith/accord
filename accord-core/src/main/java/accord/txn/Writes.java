@@ -16,10 +16,10 @@ public class Writes
         this.write = write;
     }
 
-    public void apply(CommandShard commands)
+    public void apply(CommandShard commandShard)
     {
         if (write != null)
-            write.apply(commands.ranges(), executeAt, commands.store());
+            write.apply(commandShard.ranges(), executeAt, commandShard.store());
     }
 
     @Override

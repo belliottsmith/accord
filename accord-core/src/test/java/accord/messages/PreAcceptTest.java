@@ -52,8 +52,8 @@ public class PreAcceptTest
         Node node = createNode(ID1, messageSink, clock);
 
         IntKey key = IntKey.key(10);
-        CommandShard instance = node.local(key).orElseThrow();
-        Assertions.assertFalse(instance.hasCommandsForKey(key));
+        CommandShard commandShard = node.local(key).orElseThrow();
+        Assertions.assertFalse(commandShard.hasCommandsForKey(key));
 
         TxnId txnId = clock.idForNode(ID2);
         Txn txn = writeTxn(Keys.of(key));
@@ -61,7 +61,7 @@ public class PreAcceptTest
         clock.increment(10);
         preAccept.process(node, ID2, 0);
 
-        Command command = instance.commandsForKey(key).uncommitted.get(txnId);
+        Command command = commandShard.commandsForKey(key).uncommitted.get(txnId);
         Assertions.assertEquals(Status.PreAccepted, command.status());
 
         messageSink.assertHistorySizes(0, 1);
@@ -78,8 +78,8 @@ public class PreAcceptTest
         Node node = createNode(ID1, messageSink, clock);
 
         IntKey key = IntKey.key(10);
-        CommandShard instance = node.local(key).orElseThrow();
-        Assertions.assertFalse(instance.hasCommandsForKey(key));
+        CommandShard commandShard = node.local(key).orElseThrow();
+        Assertions.assertFalse(commandShard.hasCommandsForKey(key));
 
         TxnId txnId = clock.idForNode(ID2);
         Txn txn = writeTxn(Keys.of(key));

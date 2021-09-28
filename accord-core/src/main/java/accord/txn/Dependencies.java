@@ -65,20 +65,11 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
         return deps.get(txnId);
     }
 
-    public Iterable<TxnId> on(Shard shard)
-    {
-        // TODO: efficiency
-        return deps.entrySet()
-                   .stream()
-                   .filter(e -> e.getValue().keys().stream().anyMatch(shard::contains))
-                   .map(Entry::getKey)::iterator;
-    }
-
-    public Iterable<TxnId> on(CommandShard commands)
+    public Iterable<TxnId> on(CommandShard commandShard)
     {
         return deps.entrySet()
                 .stream()
-                .filter(e -> commands.intersects(e.getValue().keys()))
+                .filter(e -> commandShard.intersects(e.getValue().keys()))
                 .map(Entry::getKey)::iterator;
     }
 

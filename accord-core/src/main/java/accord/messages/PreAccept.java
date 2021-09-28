@@ -111,10 +111,10 @@ public class PreAccept implements Request
         }
     }
 
-    static Dependencies calculateDeps(CommandShard commands, TxnId txnId, Txn txn, Timestamp executeAt)
+    static Dependencies calculateDeps(CommandShard commandShard, TxnId txnId, Txn txn, Timestamp executeAt)
     {
         NavigableMap<TxnId, Txn> deps = new TreeMap<>();
-        txn.conflictsMayExecuteBefore(commands, executeAt).forEach(conflict -> {
+        txn.conflictsMayExecuteBefore(commandShard, executeAt).forEach(conflict -> {
             if (conflict.txnId().equals(txnId))
                 return;
 

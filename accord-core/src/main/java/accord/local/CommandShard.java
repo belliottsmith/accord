@@ -20,6 +20,9 @@ import java.util.function.Function;
 
 /**
  * Single threaded subdivision of accord metadata
+ * possible better names:
+ * MetaStore
+ * MetaShard
  */
 public abstract class CommandShard
 {

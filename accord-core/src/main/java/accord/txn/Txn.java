@@ -79,8 +79,8 @@ public class Txn
 
     public Data read(Command command)
     {
-        CommandShard instance = command.instance;
-        return read(instance.ranges(), instance.store());
+        CommandShard commandShard = command.commandShard;
+        return read(commandShard.ranges(), commandShard.store());
     }
 
     // TODO: move these somewhere else?
@@ -89,15 +89,15 @@ public class Txn
         return node.local(keys());
     }
 
-    public Timestamp maxConflict(CommandShard commands)
+    public Timestamp maxConflict(CommandShard commandShard)
     {
-        return maxConflict(commands, keys());
+        return maxConflict(commandShard, keys());
     }
 
-    public Stream<Command> conflictsMayExecuteBefore(CommandShard commands, Timestamp mayExecuteBefore)
+    public Stream<Command> conflictsMayExecuteBefore(CommandShard commandShard, Timestamp mayExecuteBefore)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = commands.commandsForKey(key);
+            CommandsForKey forKey = commandShard.commandsForKey(key);
             return Stream.concat(
             forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
             // TODO: only return latest of Committed?
@@ -106,48 +106,48 @@ public class Txn
         });
     }
 
-    public Stream<Command> uncommittedStartedBefore(CommandShard instance, TxnId startedBefore)
+    public Stream<Command> uncommittedStartedBefore(CommandShard commandShard, TxnId startedBefore)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = instance.commandsForKey(key);
+            CommandsForKey forKey = commandShard.commandsForKey(key);
             return forKey.uncommitted.headMap(startedBefore, false).values().stream();
         });
     }
 
-    public Stream<Command> committedStartedBefore(CommandShard instance, TxnId startedBefore)
+    public Stream<Command> committedStartedBefore(CommandShard commandShard, TxnId startedBefore)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = instance.commandsForKey(key);
+            CommandsForKey forKey = commandShard.commandsForKey(key);
             return forKey.committedById.headMap(startedBefore, false).values().stream();
         });
     }
 
-    public Stream<Command> uncommittedStartedAfter(CommandShard instance, TxnId startedAfter)
+    public Stream<Command> uncommittedStartedAfter(CommandShard commandShard, TxnId startedAfter)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = instance.commandsForKey(key);
+            CommandsForKey forKey = commandShard.commandsForKey(key);
             return forKey.uncommitted.tailMap(startedAfter, false).values().stream();
         });
     }
 
-    public Stream<Command> committedExecutesAfter(CommandShard instance, TxnId startedAfter)
+    public Stream<Command> committedExecutesAfter(CommandShard commandShard, TxnId startedAfter)
     {
         return keys().stream().flatMap(key -> {
-            CommandsForKey forKey = instance.commandsForKey(key);
+            CommandsForKey forKey = commandShard.commandsForKey(key);
             return forKey.committedByExecuteAt.tailMap(startedAfter, false).values().stream();
         });
     }
 
-    public void register(CommandShard commands, Command command)
+    public void register(CommandShard commandShard, Command command)
     {
-        assert commands == command.instance;
-        keys().forEach(key -> commands.commandsForKey(key).register(command));
+        assert commandShard == command.commandShard;
+        keys().forEach(key -> commandShard.commandsForKey(key).register(command));
     }
 
-    protected Timestamp maxConflict(CommandShard commands, Keys keys)
+    protected Timestamp maxConflict(CommandShard commandShard, Keys keys)
     {
         return keys.stream()
-                   .map(commands::commandsForKey)
+                   .map(commandShard::commandsForKey)
                    .map(CommandsForKey::max)
                    .max(Comparator.naturalOrder())
                    .orElse(Timestamp.NONE);

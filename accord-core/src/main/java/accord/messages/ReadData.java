@@ -8,8 +8,6 @@ import java.util.stream.Collectors;
 import accord.local.*;
 import accord.local.Node.Id;
 import accord.api.Data;
-import accord.messages.Reply;
-import accord.messages.Request;
 import accord.txn.Txn;
 import accord.txn.TxnId;
 import accord.txn.Timestamp;
@@ -90,7 +88,7 @@ public class ReadData implements Request
             Data next = command.txn().read(command);
             data = data == null ? next : data.merge(next);
 
-            waitingOn.remove(command.instance);
+            waitingOn.remove(command.commandShard);
             if (waitingOn.isEmpty())
             {
                 waitingOnReporter.cancel();
@@ -105,7 +103,7 @@ public class ReadData implements Request
                 isObsolete = true;
                 waitingOnReporter.cancel();
                 // TODO: this may result in redundant messages being sent when a shard is split across several command shards
-                node.send(command.instance.nodesFor(command), new Apply(command.txnId(), command.txn(), command.executeAt(), command.savedDeps(), command.writes(), command.result()));
+                node.send(command.commandShard.nodesFor(command), new Apply(command.txnId(), command.txn(), command.executeAt(), command.savedDeps(), command.writes(), command.result()));
                 node.reply(replyToNode, replyToMessage, new ReadNack());
             }
         }
