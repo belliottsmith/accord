@@ -108,7 +108,6 @@ public class Node
         this.messageSink = messageSink;
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        // TODO: test single threaded shard
         this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
         this.commandStores.updateTopology(local);
     }

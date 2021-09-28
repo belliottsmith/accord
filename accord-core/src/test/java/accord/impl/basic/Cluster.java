@@ -30,7 +30,6 @@ import accord.topology.Shards;
 
 public class Cluster implements Scheduler
 {
-
     final Function<Id, Node> lookup;
     final PendingQueue pending;
     final Consumer<Packet> responseSink;
