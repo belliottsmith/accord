@@ -172,9 +172,10 @@ public class KeyRanges implements Iterable<KeyRange>
         KeyRange current = ranges[0];
         for (int i=1; i<ranges.length; i++)
         {
-            if (current.end().equals(ranges[i].start()))
+            KeyRange merged = current.tryMerge(ranges[i]);
+            if (merged != null)
             {
-                current = current.subRange(current.start(), ranges[i].end());
+                current = merged;
             }
             else
             {

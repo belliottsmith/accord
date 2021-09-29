@@ -40,6 +40,12 @@ public abstract class KeyRange<K extends Key<K>>
         {
             return true;
         }
+
+        @Override
+        public KeyRange<K> tryMerge(KeyRange<K> that)
+        {
+            return KeyRange.tryMergeExclusiveInclusive(this, that);
+        }
     }
 
     public static abstract class StartInclusive<K extends Key<K>> extends KeyRange<K>
@@ -70,6 +76,34 @@ public abstract class KeyRange<K extends Key<K>>
         {
             return false;
         }
+
+        @Override
+        public KeyRange<K> tryMerge(KeyRange<K> that)
+        {
+            return KeyRange.tryMergeExclusiveInclusive(this, that);
+        }
+    }
+
+    private static <K extends Key<K>> KeyRange<K> tryMergeExclusiveInclusive(KeyRange<K> left, KeyRange<K> right)
+    {
+        if (left.getClass() != right.getClass())
+            return null;
+
+        Preconditions.checkArgument(left instanceof EndInclusive || left instanceof StartInclusive);
+
+        int cmp = left.compareIntersecting(right);
+
+        if (cmp == 0)
+            return left.subRange(left.start.compareTo(right.start) < 0 ? left.start : right.start,
+                                 left.end.compareTo(right.end) > 0 ? left.end : right.end);
+
+        if (cmp > 0 && right.end.equals(left.start))
+            return left.subRange(right.start, left.end);
+
+        if (cmp < 0 && left.end.equals(right.start))
+            return left.subRange(left.start, right.end);
+
+        return null;
     }
 
     private final K start;
@@ -95,6 +129,12 @@ public abstract class KeyRange<K extends Key<K>>
     public abstract boolean startInclusive();
 
     public abstract boolean endInclusive();
+
+    /**
+     * Return a new range covering this and the given range if the ranges are intersecting or touching. That is,
+     * no keys can exist between the touching ends of the range.
+     */
+    public abstract KeyRange<K> tryMerge(KeyRange<K> that);
 
     public abstract KeyRange<K> subRange(K start, K end);
 
