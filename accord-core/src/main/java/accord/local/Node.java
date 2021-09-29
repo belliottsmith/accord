@@ -83,7 +83,6 @@ public class Node
     private final CommandStores commandStores;
     private final Id id;
     private final Topology cluster;
-    private final Shards local;
     private final MessageSink messageSink;
     private final Random random;
 
@@ -97,19 +96,18 @@ public class Node
     private final Map<TxnId, CompletionStage<Result>> coordinating = new ConcurrentHashMap<>();
     private final Set<TxnId> pendingRecovery = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    public Node(Id id, Topology cluster, Shards local, MessageSink messageSink, Random random, LongSupplier nowSupplier, Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler)
+    public Node(Id id, Topology cluster, MessageSink messageSink, Random random, LongSupplier nowSupplier, Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler)
     {
         this.id = id;
         this.cluster = cluster;
         this.random = random;
         this.agent = agent;
         this.now = new AtomicReference<>(new Timestamp(nowSupplier.getAsLong(), 0, id));
-        this.local = local;
         this.messageSink = messageSink;
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
         this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
-        this.commandStores.updateTopology(local);
+        this.commandStores.updateTopology(cluster.forNode(id));
     }
 
     public void shutdown()

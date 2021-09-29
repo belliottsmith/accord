@@ -146,7 +146,7 @@ public class Cluster implements Scheduler
         {
             Cluster sinks = new Cluster(queueSupplier, lookup::get, responseSink, stderr);
             for (Id node : nodes)
-                lookup.put(node, new Node(node, shards, shards.forNode(node), sinks.create(node, randomSupplier.get()),
+                lookup.put(node, new Node(node, shards, sinks.create(node, randomSupplier.get()),
                                           randomSupplier.get(), nowSupplier.get(), ListStore::new, ListAgent.INSTANCE, sinks));
 
             List<Id> nodesList = new ArrayList<>(Arrays.asList(nodes));

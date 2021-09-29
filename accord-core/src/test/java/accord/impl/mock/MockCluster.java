@@ -68,12 +68,11 @@ public class MockCluster implements Network, AutoCloseable
         return System.currentTimeMillis();
     }
 
-    private Node createNode(Id id, Shards local, Topology topology)
+    private Node createNode(Id id, Topology topology)
     {
         MockStore store = new MockStore();
         return new Node(id,
                 topology,
-                local,
                 new SimpleMessageSink(id, this),
                 new Random(random.nextLong()),
                 this::now,
@@ -96,7 +95,7 @@ public class MockCluster implements Network, AutoCloseable
         for (int i=0; i<config.initialNodes; i++)
         {
             Id id = ids.get(i);
-            Node node = createNode(id, topology.forNode(id), topology);
+            Node node = createNode(id, topology);
             nodes.put(id, node);
         }
     }

@@ -41,7 +41,7 @@ public class PreAcceptTest
         Random random = new Random();
         MockStore store = new MockStore();
         Scheduler scheduler = new ThreadPoolScheduler();
-        return new Node(nodeId, TOPOLOGY, TOPOLOGY.forNode(nodeId), messageSink,
+        return new Node(nodeId, TOPOLOGY, messageSink,
                         random, clock, () -> store, new TestAgent(), scheduler);
     }
 
