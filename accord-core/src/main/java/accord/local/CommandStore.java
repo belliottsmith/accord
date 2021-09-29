@@ -203,15 +203,18 @@ public abstract class CommandStore
         for (KeyRange range : removed)
         {
             NavigableMap<Key, CommandsForKey> subMap = commandsForKey.subMap(range.start(), range.startInclusive(), range.end(), range.endInclusive());
-            for (Key key : subMap.keySet())
+            Iterator<Key> keyIterator = subMap.keySet().iterator();
+            while (keyIterator.hasNext())
             {
-                CommandsForKey forKey = commandsForKey.remove(key);
-                if (forKey == null)
-                    continue;
-
-                for (Command command : forKey)
-                    if (command.txn() != null && !rangeMap.ranges.intersects(command.txn().keys))
-                        commands.remove(command.txnId());
+                Key key = keyIterator.next();
+                CommandsForKey forKey = commandsForKey.get(key);
+                if (forKey != null)
+                {
+                    for (Command command : forKey)
+                        if (command.txn() != null && !rangeMap.ranges.intersects(command.txn().keys))
+                            commands.remove(command.txnId());
+                }
+                keyIterator.remove();
             }
         }
     }
