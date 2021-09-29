@@ -24,6 +24,8 @@ public class MaelstromRead implements Read
         {
             int lowIdx = range.lowKeyIndex(keys);
             if (lowIdx < 0)
+                continue;
+            if (lowIdx >= keys.size())
                 return result;
             for (int i = lowIdx, limit = range.higherKeyIndex(keys) ; i < limit ; ++i)
                 result.put(keys.get(i), s.get(keys.get(i)));

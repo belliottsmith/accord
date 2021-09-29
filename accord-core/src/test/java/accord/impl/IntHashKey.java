@@ -42,6 +42,7 @@ public class IntHashKey implements Key<IntHashKey>
                 int subEnd = i < count - 1 ? subStart + interval : endHash;
                 ranges[i] = new Range(new IntHashKey(Integer.MIN_VALUE, subStart),
                                       new IntHashKey(Integer.MIN_VALUE, subEnd));
+                last = subEnd;
             }
             return new KeyRanges(ranges);
         }
