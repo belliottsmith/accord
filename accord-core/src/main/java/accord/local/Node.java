@@ -106,7 +106,7 @@ public class Node
         this.messageSink = messageSink;
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        this.commandStores = new CommandStores(numCommandShards(), this, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
+        this.commandStores = new CommandStores(numCommandShards(), id, this::uniqueNow, agent, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
         this.commandStores.updateTopology(cluster.forNode(id));
     }
 

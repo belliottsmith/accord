@@ -27,7 +27,7 @@ public class CommandStoreTest
         KeyRanges shards = CommandStores.shardRanges(local.getRanges(), 10).get(0);
         Assertions.assertEquals(ranges(r(0, 10), r(300, 310), r(400, 410)), shards);
 
-        CommandStore commandStore = new CommandStore.Synchronized(0, null, null);
+        CommandStore commandStore = new CommandStore.Synchronized(0, ids.get(0), null, null, null);
         commandStore.updateTopology(topology, shards.add(r(350, 360)), KeyRanges.EMPTY);
         commandStore.commandsForKey(key(355));
         commandStore.commandsForKey(key(356));

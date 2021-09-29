@@ -1,11 +1,13 @@
 package accord.local;
 
+import accord.api.Agent;
 import accord.api.KeyRange;
 import accord.api.Store;
 import accord.topology.KeyRanges;
 import accord.topology.Shards;
 import accord.topology.Topology;
 import accord.txn.Keys;
+import accord.txn.Timestamp;
 import com.google.common.base.Preconditions;
 
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import java.util.Spliterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -25,11 +28,11 @@ public class CommandStores
     private Topology localTopology = Shards.EMPTY;
     private final CommandStore[] commandStores;
 
-    public CommandStores(int num, Node node, Store store, CommandStore.Factory shardFactory)
+    public CommandStores(int num, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store, CommandStore.Factory shardFactory)
     {
         this.commandStores = new CommandStore[num];
         for (int i=0; i<num; i++)
-            commandStores[i] = shardFactory.create(i, node, store);
+            commandStores[i] = shardFactory.create(i, nodeId, uniqueNow, agent, store);
     }
 
     public synchronized void shutdown()

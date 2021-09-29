@@ -1,5 +1,6 @@
 package accord.local;
 
+import accord.api.Agent;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.api.Store;
@@ -8,6 +9,7 @@ import accord.topology.Shard;
 import accord.topology.Shards;
 import accord.topology.Topology;
 import accord.txn.Keys;
+import accord.txn.Timestamp;
 import accord.txn.TxnId;
 import com.google.common.base.Preconditions;
 
@@ -23,13 +25,15 @@ public abstract class CommandStore
 {
     public interface Factory
     {
-        CommandStore create(int index, Node node, Store store);
+        CommandStore create(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store);
         Factory SYNCHRONIZED = Synchronized::new;
         Factory SINGLE_THREAD = SingleThread::new;
     }
 
     private final int index;
-    private final Node node;
+    private final Node.Id nodeId;
+    private final Function<Timestamp, Timestamp> uniqueNow;
+    private final Agent agent;
     private final Store store;
 
     /**
@@ -77,10 +81,12 @@ public abstract class CommandStore
         }
     }
 
-    public CommandStore(int index, Node node, Store store)
+    public CommandStore(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
     {
         this.index = index;
-        this.node = node;
+        this.nodeId = nodeId;
+        this.uniqueNow = uniqueNow;
+        this.agent = agent;
         this.store = store;
     }
 
@@ -115,9 +121,14 @@ public abstract class CommandStore
         return store;
     }
 
-    public Node node()
+    public Timestamp uniqueNow(Timestamp atLeast)
     {
-        return node;
+        return uniqueNow.apply(atLeast);
+    }
+
+    public Agent agent()
+    {
+        return agent;
     }
 
     public KeyRanges ranges()
@@ -262,9 +273,9 @@ public abstract class CommandStore
 
     public static class Synchronized extends CommandStore
     {
-        public Synchronized(int index, Node node, Store store)
+        public Synchronized(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
         {
-            super(index, node, store);
+            super(index, nodeId, uniqueNow, agent, store);
         }
 
         @Override
@@ -323,12 +334,12 @@ public abstract class CommandStore
             }
         }
 
-        public SingleThread(int index, Node node, Store store)
+        public SingleThread(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
         {
-            super(index, node, store);
+            super(index, nodeId, uniqueNow, agent, store);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
-                thread.setName(CommandStore.class.getSimpleName() + '[' + node.id() + ':' + index + ']');
+                thread.setName(CommandStore.class.getSimpleName() + '[' + nodeId + ':' + index + ']');
                 return thread;
             });
         }
