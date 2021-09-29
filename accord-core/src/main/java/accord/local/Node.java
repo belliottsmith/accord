@@ -26,12 +26,9 @@ import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class Node
 {
-    private static final Logger logger = LoggerFactory.getLogger(Node.class);
     public static class Id implements Comparable<Id>
     {
         public static final Id NONE = new Id(0);
@@ -75,9 +72,7 @@ public class Node
 
     public static int numCommandShards()
     {
-        // TODO: make configurable
-        logger.warn("TODO: using hardcoded value for number of command shards, make configurable");
-        return 8;
+        return 8; // TODO: make configurable
     }
 
     private final CommandStores commandStores;
@@ -96,7 +91,8 @@ public class Node
     private final Map<TxnId, CompletionStage<Result>> coordinating = new ConcurrentHashMap<>();
     private final Set<TxnId> pendingRecovery = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    public Node(Id id, Topology cluster, MessageSink messageSink, Random random, LongSupplier nowSupplier, Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler)
+    public Node(Id id, Topology cluster, MessageSink messageSink, Random random, LongSupplier nowSupplier,
+                Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler, CommandStore.Factory commandStoreFactory)
     {
         this.id = id;
         this.cluster = cluster;
@@ -106,7 +102,7 @@ public class Node
         this.messageSink = messageSink;
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        this.commandStores = new CommandStores(numCommandShards(), id, this::uniqueNow, agent, dataSupplier.get(), CommandStore.Factory.SINGLE_THREAD);
+        this.commandStores = new CommandStores(numCommandShards(), id, this::uniqueNow, agent, dataSupplier.get(), commandStoreFactory);
         this.commandStores.updateTopology(cluster.forNode(id));
     }
 

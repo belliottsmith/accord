@@ -2,6 +2,7 @@ package accord.impl.mock;
 
 import accord.NetworkFilter;
 import accord.impl.TopologyUtils;
+import accord.local.CommandStore;
 import accord.local.CommandStores;
 import accord.local.Node;
 import accord.local.Node.Id;
@@ -72,13 +73,14 @@ public class MockCluster implements Network, AutoCloseable
     {
         MockStore store = new MockStore();
         return new Node(id,
-                topology,
-                new SimpleMessageSink(id, this),
-                new Random(random.nextLong()),
-                this::now,
-                () -> store,
-                new TestAgent(),
-                new ThreadPoolScheduler());
+                        topology,
+                        new SimpleMessageSink(id, this),
+                        new Random(random.nextLong()),
+                        this::now,
+                        () -> store,
+                        new TestAgent(),
+                        new ThreadPoolScheduler(),
+                        CommandStore.Factory.SINGLE_THREAD);
     }
 
     private void init()

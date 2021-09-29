@@ -113,12 +113,12 @@ public class KeyRanges implements Iterable<KeyRange>
                 KeyRange thatRange = that.ranges[thatIdx];
 
                 int cmp = thisRange.compareIntersecting(thatRange);
-                if (cmp < 0)
+                if (cmp > 0)
                 {
                     thatIdx++;
                     continue;
                 }
-                if (cmp > 0) break;
+                if (cmp < 0) break;
 
                 int scmp = thisRange.start().compareTo(thatRange.start());
                 int ecmp = thisRange.end().compareTo(thatRange.end());
@@ -146,7 +146,7 @@ public class KeyRanges implements Iterable<KeyRange>
     /**
      * Adds a set of non-overlapping ranges
      */
-    public KeyRanges add(KeyRanges that)
+    public KeyRanges union(KeyRanges that)
     {
         KeyRange[] combined = new KeyRange[this.ranges.length + that.ranges.length];
         System.arraycopy(this.ranges, 0, combined, 0, this.ranges.length);
@@ -159,9 +159,9 @@ public class KeyRanges implements Iterable<KeyRange>
         return new KeyRanges(combined);
     }
 
-    public KeyRanges add(KeyRange range)
+    public KeyRanges union(KeyRange range)
     {
-        return add(new KeyRanges(new KeyRange[]{range}));
+        return union(new KeyRanges(new KeyRange[]{range}));
     }
 
     public KeyRanges mergeTouching()

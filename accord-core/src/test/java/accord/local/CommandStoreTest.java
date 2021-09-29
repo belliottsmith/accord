@@ -24,11 +24,11 @@ public class CommandStoreTest
         Topology topology = TopologyUtils.initialTopology(ids, ranges, 3);
         Topology local = topology.forNode(ids.get(0));
 
-        KeyRanges shards = CommandStores.shardRanges(local.getRanges(), 10).get(0);
+        KeyRanges shards = CommandStores.shardRanges(local.ranges(), 10).get(0);
         Assertions.assertEquals(ranges(r(0, 10), r(300, 310), r(400, 410)), shards);
 
         CommandStore commandStore = new CommandStore.Synchronized(0, ids.get(0), null, null, null);
-        commandStore.updateTopology(topology, shards.add(r(350, 360)), KeyRanges.EMPTY);
+        commandStore.updateTopology(topology, shards.union(r(350, 360)), KeyRanges.EMPTY);
         commandStore.commandsForKey(key(355));
         commandStore.commandsForKey(key(356));
         commandStore.commandsForKey(key(357));
@@ -77,7 +77,7 @@ public class CommandStoreTest
         Topology topology = TopologyUtils.initialTopology(ids, ranges, 3);
         Topology local = topology.forNode(ids.get(0));
 
-        KeyRanges shards = CommandStores.shardRanges(local.getRanges(), 10).get(0);
+        KeyRanges shards = CommandStores.shardRanges(local.ranges(), 10).get(0);
         Assertions.assertEquals(ranges(r(0, 10), r(300, 310), r(400, 410)), shards);
 
         assertMapping(shards, shards(local, 0, 1, 2),

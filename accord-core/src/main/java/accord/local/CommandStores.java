@@ -77,8 +77,8 @@ public class CommandStores
 
     public synchronized void updateTopology(Topology newTopology)
     {
-        KeyRanges removed = localTopology.getRanges().difference(newTopology.getRanges());
-        KeyRanges added = newTopology.getRanges().difference(localTopology.getRanges());
+        KeyRanges removed = localTopology.ranges().difference(newTopology.ranges());
+        KeyRanges added = newTopology.ranges().difference(localTopology.ranges());
         List<KeyRanges> sharded = shardRanges(added, commandStores.length);
         stream().forEach(commands -> commands.updateTopology(newTopology, sharded.get(commands.index()), removed));
     }

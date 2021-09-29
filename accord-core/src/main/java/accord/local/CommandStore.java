@@ -179,10 +179,10 @@ public abstract class CommandStore
                 Shard shard = localTopology.get(shardIdx);
 
                 int cmp = shard.range.compareIntersecting(mergedRange);
-                if (cmp < 0)
+                if (cmp > 0)
                     throw new IllegalStateException("mapped shards should always be intersecting or greater than the current shard");
 
-                if (cmp > 0)
+                if (cmp < 0)
                 {
                     shardIdx++;
                     continue;
@@ -208,7 +208,7 @@ public abstract class CommandStore
 
     void updateTopology(Topology topology, KeyRanges added, KeyRanges removed)
     {
-        KeyRanges newRanges = rangeMap.ranges.difference(removed).add(added).mergeTouching();
+        KeyRanges newRanges = rangeMap.ranges.difference(removed).union(added).mergeTouching();
         rangeMap = mapRanges(newRanges, topology);
 
         for (KeyRange range : removed)

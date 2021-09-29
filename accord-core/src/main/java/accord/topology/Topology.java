@@ -201,7 +201,7 @@ public class Topology extends AbstractCollection<Shard>
         return shards[supersetIndexes[index]];
     }
 
-    public KeyRanges getRanges()
+    public KeyRanges ranges()
     {
         return ranges;
     }

@@ -213,8 +213,8 @@ public class KeyRangeTest
     @Test
     void compareIntersectingTest()
     {
-        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(0, 100)));
-        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(0, 99)));
+        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(0, 100)));
+        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(0, 99)));
 
         Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(0, 101)));
 
@@ -228,8 +228,8 @@ public class KeyRangeTest
 
         Assertions.assertEquals(0, r(100, 200).compareIntersecting(r(199, 300)));
 
-        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(200, 300)));
-        Assertions.assertEquals(1, r(100, 200).compareIntersecting(r(201, 300)));
+        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(200, 300)));
+        Assertions.assertEquals(-1, r(100, 200).compareIntersecting(r(201, 300)));
     }
 
     private static void assertIntersection(KeyRange<IntKey> expected, KeyRange<IntKey> a, KeyRange<IntKey> b)

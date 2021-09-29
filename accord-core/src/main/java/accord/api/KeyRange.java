@@ -139,14 +139,14 @@ public abstract class KeyRange<K extends Key<K>>
 
     /**
      * Returns a negative integer, zero, or a positive integer if both points of the provided range are less than, the
-     * reange intersects this range, or both points are greater than this range
+     * range intersects this range, or both points are greater than this range
      */
     public int compareIntersecting(KeyRange<K> that)
     {
         if (this.start.compareTo(that.end) >= 0)
-            return -1;
-        if (this.end.compareTo(that.start) <= 0)
             return 1;
+        if (this.end.compareTo(that.start) <= 0)
+            return -1;
         return 0;
     }
 
