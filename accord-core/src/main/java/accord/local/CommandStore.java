@@ -15,6 +15,7 @@ import com.google.common.base.Preconditions;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -28,6 +29,7 @@ public abstract class CommandStore
         CommandStore create(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store);
         Factory SYNCHRONIZED = Synchronized::new;
         Factory SINGLE_THREAD = SingleThread::new;
+        Factory SINGLE_THREAD_DEBUG = SingleThreadDebug::new;
     }
 
     private final int index;
@@ -129,6 +131,11 @@ public abstract class CommandStore
     public Agent agent()
     {
         return agent;
+    }
+
+    public Node.Id nodeId()
+    {
+        return nodeId;
     }
 
     public KeyRanges ranges()
@@ -370,6 +377,72 @@ public abstract class CommandStore
         public void shutdown()
         {
             executor.shutdown();
+        }
+    }
+
+    public static class SingleThreadDebug extends SingleThread
+    {
+        private final AtomicReference<Thread> expectedThread = new AtomicReference<>();
+
+        public SingleThreadDebug(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        {
+            super(index, nodeId, uniqueNow, agent, store);
+        }
+
+        private void assertThread()
+        {
+            Thread current = Thread.currentThread();
+            Thread expected;
+            while (true)
+            {
+                expected = expectedThread.get();
+                if (expected != null)
+                    break;
+                expectedThread.compareAndSet(null, Thread.currentThread());
+            }
+            Preconditions.checkState(expected == current);
+        }
+
+        @Override
+        public Command command(TxnId txnId)
+        {
+            assertThread();
+            return super.command(txnId);
+        }
+
+        @Override
+        public boolean hasCommand(TxnId txnId)
+        {
+            assertThread();
+            return super.hasCommand(txnId);
+        }
+
+        @Override
+        public CommandsForKey commandsForKey(Key key)
+        {
+            assertThread();
+            return super.commandsForKey(key);
+        }
+
+        @Override
+        public boolean hasCommandsForKey(Key key)
+        {
+            assertThread();
+            return super.hasCommandsForKey(key);
+        }
+
+        @Override
+        <R> void processInternal(Function<? super CommandStore, R> function, CompletableFuture<R> future)
+        {
+            assertThread();
+            super.processInternal(function, future);
+        }
+
+        @Override
+        void processInternal(Consumer<? super CommandStore> consumer, CompletableFuture<Void> future)
+        {
+            assertThread();
+            super.processInternal(consumer, future);
         }
     }
 }
