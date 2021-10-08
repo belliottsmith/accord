@@ -203,6 +203,12 @@ public class Node
             send(dst, send);
     }
 
+    public <T> void send(Collection<Id> to, Request send, Callback<T> callback)
+    {
+        for (Id dst: to)
+            send(dst, send, callback);
+    }
+
     // send to a specific node
     public <T> void send(Id to, Request send, Callback<T> callback)
     {

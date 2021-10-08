@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 
+import accord.coordinate.tracking.PreacceptTracker;
 import accord.messages.Preempted;
 import accord.messages.Timeout;
 import accord.txn.Ballot;
@@ -29,15 +30,8 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
 
     public enum PreacceptOutcome { COMMIT, ACCEPT }
 
-    // TODO: handle reconfigurations
-    private int[] preAccepts;
-    private int[] fastPathPreAccepts;
-    private int[] failures;
-    private int[] responsesOutstanding;
+    private final PreacceptTracker tracker;
 
-    private int preAccepted;
-    private int fastPathAccepted;
-    private int noOutstandingResponses;
     private PreacceptOutcome preacceptOutcome;
     private final List<PreAcceptOk> preAcceptOks = new ArrayList<>();
 
@@ -48,22 +42,9 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
     {
         super(node, Ballot.ZERO, txnId, txn, node.cluster().forKeys(txn.keys()));
         this.keys = txn.keys();
-        this.failures = new int[shards.size()];
-        this.preAccepts = new int[shards.size()];
-        this.fastPathPreAccepts = new int[shards.size()];
-        this.responsesOutstanding = new int[shards.size()];
-        shards.forEach((i, shard) -> {
-            this.responsesOutstanding[i] = shard.nodes.size();
-        });
+        tracker = new PreacceptTracker(shards);
 
-
-        node.send(shards, new PreAccept(txnId, txn), this);
-    }
-
-    private void messageReceived(int shard)
-    {
-        if (--responsesOutstanding[shard] == 0)
-            noOutstandingResponses++;
+        node.send(tracker.nodes(), new PreAccept(txnId, txn), this);
     }
 
     @Override
@@ -78,11 +59,9 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         if (isDone() || isPreAccepted())
             return;
 
-        shards.forEachOn(from, (i, shard) -> {
-            messageReceived(i);
-            if (++failures[i] >= shard.slowPathQuorumSize)
-                completeExceptionally(new Timeout());
-        });
+        tracker.recordFailure(from);
+        if (tracker.hasFailed())
+            completeExceptionally(new Timeout());
 
         // if no other responses are expected and the slow quorum has been satisfied, proceed
         if (shouldSlowPathAccept())
@@ -105,22 +84,15 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         preAcceptOks.add(ok);
 
         boolean fastPath = ok.witnessedAt.compareTo(txnId) == 0;
-        shards.forEachOn(from, (i, shard) -> {
-            messageReceived(i);
-            if (fastPath && shard.fastPathElectorate.contains(from) && ++fastPathPreAccepts[i] == shard.fastPathQuorumSize)
-                ++fastPathAccepted;
+        tracker.recordSuccess(from, fastPath);
 
-            if (++preAccepts[i] == shard.slowPathQuorumSize)
-                ++preAccepted;
-        });
-
-        if (isFastPathAccepted() || shouldSlowPathAccept())
+        if (tracker.hasMetFastPathCriteria() || shouldSlowPathAccept())
             onPreAccepted();
     }
 
     private void onPreAccepted()
     {
-        if (isFastPathAccepted())
+        if (tracker.hasMetFastPathCriteria())
         {
             preacceptOutcome = PreacceptOutcome.COMMIT;
             Dependencies deps = new Dependencies();
@@ -150,14 +122,9 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         }
     }
 
-    private boolean isFastPathAccepted()
-    {
-        return fastPathAccepted == shards.size();
-    }
-
     private boolean shouldSlowPathAccept()
     {
-        return noOutstandingResponses == shards.size() && preAccepted == shards.size();
+        return !tracker.hasOutstandingResponses() && tracker.hasReachedQuorum();
     }
 
     private boolean isPreAccepted()
