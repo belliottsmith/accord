@@ -46,4 +46,20 @@ public class CoordinateTest
             Assertions.assertEquals(MockStore.RESULT, result);
         }
     }
+
+    @Test
+    void multiKeyTest() throws Throwable
+    {
+        try (MockCluster cluster = MockCluster.builder().nodes(6).maxKey(600).build())
+        {
+            Node node = cluster.get(1);
+            Assertions.assertNotNull(node);
+
+            TxnId txnId = new TxnId(100, 0, node.id());
+//            Txn txn = writeTxn(IntKey.keys(50, 150, 250, 350, 450, 550));
+            Txn txn = writeTxn(IntKey.keys(50, 350, 550));
+            Result result = Coordinate.execute(node, txnId, txn).toCompletableFuture().get();
+            Assertions.assertEquals(MockStore.RESULT, result);
+        }
+    }
 }

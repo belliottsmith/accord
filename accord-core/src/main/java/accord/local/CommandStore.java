@@ -230,7 +230,7 @@ public abstract class CommandStore
         }
     }
 
-    int index()
+    public int index()
     {
         return index;
     }
@@ -240,7 +240,13 @@ public abstract class CommandStore
         return rangeMap.ranges.intersects(keys);
     }
 
-    <R> void process(Function<? super CommandStore, R> function, CompletableFuture<R> future)
+    public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)
+    {
+        for (CommandStore store : stores)
+            store.process(consumer);
+    }
+
+    <R> void processInternal(Function<? super CommandStore, R> function, CompletableFuture<R> future)
     {
         try
         {
@@ -252,7 +258,7 @@ public abstract class CommandStore
         }
     }
 
-    void process(Consumer<? super CommandStore> consumer, CompletableFuture<Void> future)
+    void processInternal(Consumer<? super CommandStore> consumer, CompletableFuture<Void> future)
     {
         try
         {
@@ -282,7 +288,7 @@ public abstract class CommandStore
         public synchronized <R> CompletionStage<R> process(Function<? super CommandStore, R> func)
         {
             CompletableFuture<R> future = new CompletableFuture<>();
-            process(func, future);
+            processInternal(func, future);
             return future;
         }
 
@@ -290,7 +296,7 @@ public abstract class CommandStore
         public synchronized CompletionStage<Void> process(Consumer<? super CommandStore> consumer)
         {
             CompletableFuture<Void> future = new CompletableFuture<>();
-            process(consumer, future);
+            processInternal(consumer, future);
             return future;
         }
 
@@ -314,7 +320,7 @@ public abstract class CommandStore
             @Override
             public void run()
             {
-                process(function, this);
+                processInternal(function, this);
             }
         }
 
@@ -330,7 +336,7 @@ public abstract class CommandStore
             @Override
             public void run()
             {
-                process(consumer, this);
+                processInternal(consumer, this);
             }
         }
 

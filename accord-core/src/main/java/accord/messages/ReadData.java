@@ -112,7 +112,8 @@ public class ReadData implements Request
         {
             // TODO: simple hash set supporting concurrent modification, or else avoid concurrent modification
             waitingOn = txn.local(node).collect(Collectors.toCollection(() -> new DeterministicIdentitySet<>()));
-            waitingOn.forEach(instance -> {
+            // FIXME: fix/check thread safety
+            CommandStore.onEach(waitingOn, instance -> {
                 Command command = instance.command(txnId);
                 command.witness(txn);
                 switch (command.status())

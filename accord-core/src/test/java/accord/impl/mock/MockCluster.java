@@ -85,7 +85,6 @@ public class MockCluster implements Network, AutoCloseable
 
     private void init()
     {
-        Preconditions.checkArgument(config.initialNodes == config.replication, "TODO");
         List<Id> ids = new ArrayList<>(config.initialNodes);
         for (int i=0; i<config.initialNodes; i++)
         {
