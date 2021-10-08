@@ -83,7 +83,7 @@ public class KeyRanges implements Iterable<KeyRange>
     {
         KeyRange[] selection = new KeyRange[indexes.length];
         for (int i=0; i<indexes.length; i++)
-            selection[i] = ranges[i];
+            selection[i] = ranges[indexes[i]];
         return new KeyRanges(selection);
     }
 
