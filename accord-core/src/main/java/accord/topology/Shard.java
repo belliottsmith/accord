@@ -8,6 +8,8 @@ import accord.local.Node.Id;
 import accord.api.Key;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 public class Shard
 {
@@ -21,9 +23,9 @@ public class Shard
     public Shard(KeyRange range, List<Id> nodes, Set<Id> fastPathElectorate)
     {
         this.range = range;
-        this.nodes = nodes;
+        this.nodes = ImmutableList.copyOf(nodes);
         int f = maxToleratedFailures(nodes.size());
-        this.fastPathElectorate = fastPathElectorate;
+        this.fastPathElectorate = ImmutableSet.copyOf(fastPathElectorate);
         int e = fastPathElectorate.size();
         this.recoveryFastPathSize = (f+1)/2;
         this.slowPathQuorumSize = f + 1;
