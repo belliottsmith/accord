@@ -198,7 +198,7 @@ public abstract class KeyRange<K extends Key<K>>
     public boolean intersects(Keys keys)
     {
         int i = lowKeyIndex(keys);
-        return i >=0 && i < keys.size();
+        return i >=0 && i < keys.size() && containsKey((K) keys.get(i));
     }
 
     /**
