@@ -197,8 +197,7 @@ public abstract class KeyRange<K extends Key<K>>
 
     public boolean intersects(Keys keys)
     {
-        int i = lowKeyIndex(keys);
-        return i >=0 && i < keys.size() && containsKey((K) keys.get(i));
+        return lowKeyIndex(keys) >= 0;
     }
 
     /**
@@ -232,7 +231,9 @@ public abstract class KeyRange<K extends Key<K>>
     }
 
     /**
-     * returns the index of the lowest key contained in this range
+     * returns the index of the lowest key contained in this range. If the keys object contains no intersecting
+     * keys, <code>(-(<i>insertion point</i>) - 1)</code> is returned. Where <i>insertion point</i> is where an
+     * intersecting key would be inserted into the keys array
      * @param keys
      */
     public int lowKeyIndex(Keys keys, int lowerBound, int upperBound)
@@ -242,11 +243,9 @@ public abstract class KeyRange<K extends Key<K>>
         int i = keys.search(lowerBound, upperBound, this,
                             (k, r) -> ((KeyRange) r).compareKey((Key) k) < 0 ? -1 : 1);
 
-        if (i < 0) i = -1 - i;
+        int minIdx = -1 - i;
 
-        if (i == 0 && !containsKey((K) keys.get(0))) i = -1;
-
-        return i;
+        return (minIdx < keys.size() && containsKey((K) keys.get(minIdx))) ? minIdx : i;
     }
 
     public int lowKeyIndex(Keys keys)

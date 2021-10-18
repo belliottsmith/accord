@@ -156,14 +156,15 @@ public abstract class CommandStore
             KeyRange range = mapping.ranges.get(i);
             int lowKeyIdx = range.lowKeyIndex(keys, lowerBound, keys.size());
 
-            // all keys are less than the current range, so no other
-            // ranges will intersect with these keys
-            if (lowKeyIdx >= keys.size())
+            if (lowKeyIdx < -keys.size())
                 break;
 
-            // all remaining keys are greater than this range, so go to the next one
             if (lowKeyIdx < 0)
+            {
+                // all remaining keys are greater than this range, so go to the next one
+                lowerBound = -1 - lowKeyIdx;
                 continue;
+            }
 
             // otherwise this range intersects with the txn, so add it's shard's endpoings
             // TODO: filter pending nodes for reads

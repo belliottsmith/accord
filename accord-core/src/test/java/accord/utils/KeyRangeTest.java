@@ -154,7 +154,7 @@ public class KeyRangeTest
         assertHigherKeyIndex(7, rangeStartIncl(20, 25), keys);
     }
 
-    private static void assertLowKeyIndex(int expectedIdx, KeyRange range, Keys keys)
+    private static void assertLowKeyIndex(int expectedIdx, KeyRange range, Keys keys, int lowerBound, int upperBound)
     {
         if (expectedIdx >= 0 && expectedIdx < keys.size())
         {
@@ -162,12 +162,18 @@ public class KeyRangeTest
         }
         else
         {
-            Assertions.assertFalse(range.containsKey(keys.get(0)));
-            Assertions.assertFalse(range.containsKey(keys.get(keys.size() - 1)));
+            Assertions.assertFalse(range.containsKey(keys.get(lowerBound)));
+            Assertions.assertFalse(range.containsKey(keys.get(upperBound - 1)));
         }
 
-        int actualIdx = range.lowKeyIndex(keys);
+        int actualIdx = range.lowKeyIndex(keys, lowerBound, upperBound);
         Assertions.assertEquals(expectedIdx, actualIdx);
+    }
+
+    private static void assertLowKeyIndex(int expectedIdx, KeyRange range, Keys keys)
+    {
+
+        assertLowKeyIndex(expectedIdx, range, keys, 0, keys.size());
     }
 
     @Test
@@ -188,10 +194,15 @@ public class KeyRangeTest
         assertLowKeyIndex(6, rangeEndIncl(15, 20), keys);
         assertLowKeyIndex(5, rangeStartIncl(15, 20), keys);
 
-        assertLowKeyIndex(7, rangeEndIncl(16, 20), keys);
+        assertLowKeyIndex(-8, rangeEndIncl(16, 20), keys);
         assertLowKeyIndex(6, rangeStartIncl(16, 20), keys);
-        assertLowKeyIndex(7, rangeEndIncl(20, 25), keys);
-        assertLowKeyIndex(7, rangeStartIncl(20, 25), keys);
+        assertLowKeyIndex(-8, rangeEndIncl(20, 25), keys);
+        assertLowKeyIndex(-8, rangeStartIncl(20, 25), keys);
+
+        // non-intersecting
+        assertLowKeyIndex(-2, rangeStartIncl(12, 14), keys(10, 16));
+        assertLowKeyIndex(-2, rangeStartIncl(12, 14), keys(10, 16, 18), 1, 3);
+        assertLowKeyIndex(-3, rangeStartIncl(12, 14), keys(10, 16, 18), 2, 3);
     }
 
     @Test
