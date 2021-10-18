@@ -92,17 +92,17 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
 
     public boolean hasCompletedRead()
     {
-        return allTrackers(ReadExecutionShardTracker::hasCompletedRead);
+        return all(ReadExecutionShardTracker::hasCompletedRead);
     }
 
     public boolean hasFailed()
     {
-        return anyTrackers(ReadExecutionShardTracker::hasFailed);
+        return any(ReadExecutionShardTracker::hasFailed);
     }
 
     private int intersectionSize(Id node, Set<ReadExecutionShardTracker> target)
     {
-        List<ReadExecutionShardTracker> nodeTrackers = nodeTrackers(node);
+        List<ReadExecutionShardTracker> nodeTrackers = trackersForNode(node);
         int count = 0;
         for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
         {
@@ -122,9 +122,9 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
      *
      * Returns null if the read cannot be completed.
      */
-    public Set<Id> getReadSet()
+    public Set<Id> computeMinimalReadSet()
     {
-        Set<ReadExecutionShardTracker> toRead = accumulateTracker((tracker, accumulate) -> {
+        Set<ReadExecutionShardTracker> toRead = accumulate((tracker, accumulate) -> {
             if (!tracker.shouldRead())
                 return accumulate;
 
@@ -150,7 +150,7 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
             Id node = maxNode.get();
             nodes.add(node);
             candidates.remove(node);
-            List<ReadExecutionShardTracker> nodeTrackers = nodeTrackers(node);
+            List<ReadExecutionShardTracker> nodeTrackers = trackersForNode(node);
             for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
                 toRead.remove(nodeTrackers.get(i));
         }

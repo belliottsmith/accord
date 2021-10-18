@@ -106,7 +106,7 @@ public class ReadExecutionTrackerTest
         [1, 2, 3] [2, 3, 4] [3, 4, 5]
          */
 
-        Assertions.assertEquals(Sets.newHashSet(ids[2]), responses.getReadSet());
+        Assertions.assertEquals(Sets.newHashSet(ids[2]), responses.computeMinimalReadSet());
 
         responses.recordInflightRead(ids[2]);
         assertResponseState(responses, false, false);
@@ -114,17 +114,17 @@ public class ReadExecutionTrackerTest
         responses.recordReadFailure(ids[2]);
         assertResponseState(responses, false, false);
 
-        Assertions.assertEquals(Sets.newHashSet(ids[1], ids[3]), responses.getReadSet());
+        Assertions.assertEquals(Sets.newHashSet(ids[1], ids[3]), responses.computeMinimalReadSet());
         responses.recordInflightRead(ids[1]);
         responses.recordInflightRead(ids[3]);
         assertResponseState(responses, false, false);
 
         responses.recordReadFailure(ids[1]);
-        Assertions.assertEquals(Sets.newHashSet(ids[0]), responses.getReadSet());
+        Assertions.assertEquals(Sets.newHashSet(ids[0]), responses.computeMinimalReadSet());
 
         responses.recordReadSuccess(ids[3]);
         assertResponseState(responses, false, false);
-        Assertions.assertEquals(Sets.newHashSet(ids[0]), responses.getReadSet());
+        Assertions.assertEquals(Sets.newHashSet(ids[0]), responses.computeMinimalReadSet());
 
         responses.recordInflightRead(ids[0]);
         responses.recordReadSuccess(ids[0]);

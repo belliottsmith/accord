@@ -75,17 +75,17 @@ public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.Quor
 
     public boolean hasReachedQuorum()
     {
-        return allTrackers(QuorumShardTracker::hasReachedQuorum);
+        return all(QuorumShardTracker::hasReachedQuorum);
     }
 
     public boolean hasFailed()
     {
-        return anyTrackers(QuorumShardTracker::hasFailed);
+        return any(QuorumShardTracker::hasFailed);
     }
 
     public boolean hasOutstandingResponses()
     {
-        return anyTrackers(QuorumShardTracker::hasOutstandingResponses);
+        return any(QuorumShardTracker::hasOutstandingResponses);
     }
 
 }

@@ -51,6 +51,6 @@ public abstract class FastPathTracker<T extends FastPathTracker.FastPathShardTra
 
     public boolean hasMetFastPathCriteria()
     {
-        return allTrackers(FastPathShardTracker::hasMetFastPathCriteria);
+        return all(FastPathShardTracker::hasMetFastPathCriteria);
     }
 }

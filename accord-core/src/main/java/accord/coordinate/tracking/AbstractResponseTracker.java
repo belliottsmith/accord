@@ -55,19 +55,13 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
     abstract T createShardInfo(Shard shard);
     abstract T[] createInfoArray(int size);
 
-    @VisibleForTesting
-    T getUnsafe(int i)
-    {
-        return trackers[i];
-    }
-
     void applyForNode(Node.Id node, BiConsumer<T, Node.Id> consumer)
     {
         for (T tracker : trackers)
             consumer.accept(tracker, node);
     }
 
-    boolean allTrackers(Predicate<T> predicate)
+    boolean all(Predicate<T> predicate)
     {
         for (T tracker : trackers)
             if (!predicate.test(tracker))
@@ -75,7 +69,7 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         return true;
     }
 
-    boolean anyTrackers(Predicate<T> predicate)
+    boolean any(Predicate<T> predicate)
     {
         for (T tracker : trackers)
             if (predicate.test(tracker))
@@ -83,14 +77,14 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         return false;
     }
 
-    <V> V accumulateTracker(BiFunction<T, V, V> function, V start)
+    <V> V accumulate(BiFunction<T, V, V> function, V start)
     {
         for (T tracker : trackers)
             start = function.apply(tracker, start);
         return start;
     }
 
-    List<T> nodeTrackers(Node.Id node)
+    List<T> trackersForNode(Node.Id node)
     {
         return nodeMap.get(node);
     }
@@ -98,5 +92,11 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
     public Set<Node.Id> nodes()
     {
         return nodeMap.keySet();
+    }
+
+    @VisibleForTesting
+    T unsafeGet(int i)
+    {
+        return trackers[i];
     }
 }

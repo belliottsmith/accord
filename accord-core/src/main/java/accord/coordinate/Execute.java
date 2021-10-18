@@ -60,7 +60,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         }
         else
         {
-            Set<Id> readSet = tracker.getReadSet();
+            Set<Id> readSet = tracker.computeMinimalReadSet();
             for (Node.Id to : tracker.nodes())
             {
                 boolean read = readSet.contains(to);
@@ -122,7 +122,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
             throwable.printStackTrace();
 
         tracker.recordReadFailure(from);
-        Set<Id> readFrom = tracker.getReadSet();
+        Set<Id> readFrom = tracker.computeMinimalReadSet();
         if (readFrom == null)
         {
             Preconditions.checkState(tracker.hasFailed());

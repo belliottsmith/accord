@@ -111,9 +111,9 @@ public class PreacceptTrackerTest
         [1, 2, 3] [2, 3, 4] [3, 4, 5]
          */
 
-        Assertions.assertSame(subShards.get(0), responses.getUnsafe(0).shard);
-        Assertions.assertSame(subShards.get(1), responses.getUnsafe(1).shard);
-        Assertions.assertSame(subShards.get(2), responses.getUnsafe(2).shard);
+        Assertions.assertSame(subShards.get(0), responses.unsafeGet(0).shard);
+        Assertions.assertSame(subShards.get(1), responses.unsafeGet(1).shard);
+        Assertions.assertSame(subShards.get(2), responses.unsafeGet(2).shard);
 
         responses.onFastPathSuccess(ids[1]);
         assertResponseState(responses, false, false, false, true);
@@ -123,7 +123,7 @@ public class PreacceptTrackerTest
 
         responses.onFastPathSuccess(ids[3]);
         // the middle shard will have reached fast path
-        Assertions.assertTrue(responses.getUnsafe(1).hasMetFastPathCriteria());
+        Assertions.assertTrue(responses.unsafeGet(1).hasMetFastPathCriteria());
         // but since the others haven't, it won't report it as accepted
         assertResponseState(responses, true, false, false, true);
 
