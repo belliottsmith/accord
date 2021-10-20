@@ -36,10 +36,4 @@ public class PreacceptTracker extends FastPathTracker<PreacceptTracker.Preaccept
     {
         return new PreacceptShardTracker(shard);
     }
-
-    @Override
-    PreacceptShardTracker[] createShardTrackerArray(int size)
-    {
-        return new PreacceptShardTracker[size];
-    }
 }

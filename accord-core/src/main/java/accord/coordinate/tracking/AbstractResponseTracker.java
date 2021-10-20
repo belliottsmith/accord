@@ -45,7 +45,7 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
     public AbstractResponseTracker(Shards shards)
     {
         this.shards = shards;
-        trackers = createShardTrackerArray(shards.size());
+        trackers = (T[]) new Object[shards.size()];
         this.shards.forEach((i, shard) -> {
             trackers[i] = createShardTracker(shard);
             indexNodes(trackers[i], nodeMap, shards.size());
@@ -53,7 +53,6 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
     }
 
     abstract T createShardTracker(Shard shard);
-    abstract T[] createShardTrackerArray(int size);
 
     void applyForNode(Node.Id node, BiConsumer<T, Node.Id> consumer)
     {

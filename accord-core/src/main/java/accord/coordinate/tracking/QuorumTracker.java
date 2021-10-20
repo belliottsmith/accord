@@ -15,10 +15,4 @@ public class QuorumTracker extends AbstractQuorumTracker<AbstractQuorumTracker.Q
     {
         return new QuorumShardTracker(shard);
     }
-
-    @Override
-    QuorumShardTracker[] createShardTrackerArray(int size)
-    {
-        return new QuorumShardTracker[size];
-    }
 }

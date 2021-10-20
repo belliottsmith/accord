@@ -36,10 +36,4 @@ public class RecoveryTracker extends FastPathTracker<RecoveryTracker.RecoverySha
     {
         return new RecoveryShardTracker(shard);
     }
-
-    @Override
-    RecoveryShardTracker[] createShardTrackerArray(int size)
-    {
-        return new RecoveryShardTracker[size];
-    }
 }

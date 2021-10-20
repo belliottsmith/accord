@@ -67,12 +67,6 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
         return new ReadShardTracker(shard);
     }
 
-    @Override
-    ReadShardTracker[] createShardTrackerArray(int size)
-    {
-        return new ReadShardTracker[size];
-    }
-
     public void recordInflightRead(Id node)
     {
         applyForNode(node, ReadShardTracker::recordInflightRead);
