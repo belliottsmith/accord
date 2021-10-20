@@ -32,13 +32,13 @@ public class RecoveryTracker extends FastPathTracker<RecoveryTracker.RecoverySha
     }
 
     @Override
-    RecoveryShardTracker createShardInfo(Shard shard)
+    RecoveryShardTracker createShardTracker(Shard shard)
     {
         return new RecoveryShardTracker(shard);
     }
 
     @Override
-    RecoveryShardTracker[] createInfoArray(int size)
+    RecoveryShardTracker[] createShardTrackerArray(int size)
     {
         return new RecoveryShardTracker[size];
     }

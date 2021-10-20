@@ -7,16 +7,15 @@ import com.google.common.collect.Sets;
 
 import java.util.*;
 
-public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionTracker.ReadExecutionShardTracker>
+public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTracker>
 {
-    static class ReadExecutionShardTracker extends AbstractResponseTracker.ShardTracker
+    static class ReadShardTracker extends AbstractResponseTracker.ShardTracker
     {
         private final Set<Id> candidates;
         private final Set<Id> inflight = new HashSet<>();
-        private int failures = 0;
         private boolean hasData = false;
 
-        public ReadExecutionShardTracker(Shard shard)
+        public ReadShardTracker(Shard shard)
         {
             super(shard);
             this.candidates = new HashSet<>(shard.nodes);
@@ -57,52 +56,52 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
 
     private final Set<Id> failures = new HashSet<>();
 
-    public ReadExecutionTracker(Shards shards)
+    public ReadTracker(Shards shards)
     {
         super(shards);
     }
 
     @Override
-    ReadExecutionShardTracker createShardInfo(Shard shard)
+    ReadShardTracker createShardTracker(Shard shard)
     {
-        return new ReadExecutionShardTracker(shard);
+        return new ReadShardTracker(shard);
     }
 
     @Override
-    ReadExecutionShardTracker[] createInfoArray(int size)
+    ReadShardTracker[] createShardTrackerArray(int size)
     {
-        return new ReadExecutionShardTracker[size];
+        return new ReadShardTracker[size];
     }
 
     public void recordInflightRead(Id node)
     {
-        applyForNode(node, ReadExecutionShardTracker::recordInflightRead);
+        applyForNode(node, ReadShardTracker::recordInflightRead);
     }
 
     public void recordReadSuccess(Id node)
     {
-        applyForNode(node, ReadExecutionShardTracker::recordReadSuccess);
+        applyForNode(node, ReadShardTracker::recordReadSuccess);
     }
 
     public void recordReadFailure(Id node)
     {
-        applyForNode(node, ReadExecutionShardTracker::recordReadFailure);
+        applyForNode(node, ReadShardTracker::recordReadFailure);
         failures.add(node);
     }
 
     public boolean hasCompletedRead()
     {
-        return all(ReadExecutionShardTracker::hasCompletedRead);
+        return all(ReadShardTracker::hasCompletedRead);
     }
 
     public boolean hasFailed()
     {
-        return any(ReadExecutionShardTracker::hasFailed);
+        return any(ReadShardTracker::hasFailed);
     }
 
-    private int intersectionSize(Id node, Set<ReadExecutionShardTracker> target)
+    private int intersectionSize(Id node, Set<ReadShardTracker> target)
     {
-        List<ReadExecutionShardTracker> nodeTrackers = trackersForNode(node);
+        List<ReadShardTracker> nodeTrackers = trackersForNode(node);
         int count = 0;
         for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
         {
@@ -112,7 +111,7 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
         return count;
     }
 
-    private int compareIntersections(Id left, Id right, Set<ReadExecutionShardTracker> target)
+    private int compareIntersections(Id left, Id right, Set<ReadShardTracker> target)
     {
         return Integer.compare(intersectionSize(left, target), intersectionSize(right, target));
     }
@@ -124,7 +123,7 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
      */
     public Set<Id> computeMinimalReadSet()
     {
-        Set<ReadExecutionShardTracker> toRead = accumulate((tracker, accumulate) -> {
+        Set<ReadShardTracker> toRead = accumulate((tracker, accumulate) -> {
             if (!tracker.shouldRead())
                 return accumulate;
 
@@ -150,7 +149,7 @@ public class ReadExecutionTracker extends AbstractResponseTracker<ReadExecutionT
             Id node = maxNode.get();
             nodes.add(node);
             candidates.remove(node);
-            List<ReadExecutionShardTracker> nodeTrackers = trackersForNode(node);
+            List<ReadShardTracker> nodeTrackers = trackersForNode(node);
             for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
                 toRead.remove(nodeTrackers.get(i));
         }

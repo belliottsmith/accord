@@ -6,7 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import accord.api.Data;
-import accord.coordinate.tracking.ReadExecutionTracker;
+import accord.coordinate.tracking.ReadTracker;
 import accord.messages.Preempted;
 import accord.api.Result;
 import accord.messages.Callback;
@@ -35,7 +35,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
     final Shards shards;
     final Keys keys;
     final Dependencies deps;
-    final ReadExecutionTracker tracker;
+    final ReadTracker tracker;
     private Data data;
     final int replicaIndex;
 
@@ -48,7 +48,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         this.deps = agreed.deps;
         this.executeAt = agreed.executeAt;
         this.shards = agreed.shards;
-        this.tracker = new ReadExecutionTracker(shards);
+        this.tracker = new ReadTracker(shards);
         this.replicaIndex = node.random().nextInt(shards.get(0).nodes.size());
 
         // TODO: perhaps compose these different behaviours differently?

@@ -11,13 +11,13 @@ public class QuorumTracker extends AbstractQuorumTracker<AbstractQuorumTracker.Q
     }
 
     @Override
-    QuorumShardTracker createShardInfo(Shard shard)
+    QuorumShardTracker createShardTracker(Shard shard)
     {
         return new QuorumShardTracker(shard);
     }
 
     @Override
-    QuorumShardTracker[] createInfoArray(int size)
+    QuorumShardTracker[] createShardTrackerArray(int size)
     {
         return new QuorumShardTracker[size];
     }

@@ -11,23 +11,23 @@ public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.Quor
 {
     static class QuorumShardTracker extends AbstractResponseTracker.ShardTracker
     {
-        private final Set<Node.Id> outstanding;
+        private final Set<Node.Id> inflight;
         private int success = 0;
         private int failures = 0;
         public QuorumShardTracker(Shard shard)
         {
             super(shard);
-            this.outstanding = new HashSet<>(shard.nodes);
+            this.inflight = new HashSet<>(shard.nodes);
         }
 
-        boolean isOutstanding(Node.Id id)
+        boolean hasInflight(Node.Id id)
         {
-            return outstanding.contains(id);
+            return inflight.contains(id);
         }
 
         public boolean onSuccess(Node.Id id)
         {
-            if (!outstanding.remove(id))
+            if (!inflight.remove(id))
                 return false;
             success++;
             return true;
@@ -35,7 +35,7 @@ public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.Quor
 
         boolean onFailure(Node.Id id)
         {
-            if (!outstanding.remove(id))
+            if (!inflight.remove(id))
                 return false;
             failures++;
             return true;
@@ -53,7 +53,7 @@ public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.Quor
 
         boolean hasOutstandingResponses()
         {
-            return !outstanding.isEmpty();
+            return !inflight.isEmpty();
         }
     }
 
