@@ -29,11 +29,11 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 {
     class RetryAfterCommits implements Callback<WaitOnCommitOk>
     {
-        final QuorumTracker<?> retryTracker;
+        final QuorumTracker retryTracker;
 
         RetryAfterCommits(Dependencies waitOn)
         {
-            retryTracker = QuorumTracker.simple(shards);
+            retryTracker = new QuorumTracker(shards);
             for (Map.Entry<TxnId, Txn> e : waitOn)
                 node.send(shards, new WaitOnCommit(e.getKey(), e.getValue().keys()), this);
         }
@@ -74,24 +74,30 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
         }
     }
 
+    // TODO: not sure it makes sense to extend FastPathTracker, as intent here is a bit different
     static class ShardTracker extends FastPathTracker.FastPathShardTracker
     {
+        int responsesFromElectorate;
         public ShardTracker(Shard shard)
         {
             super(shard);
         }
 
         @Override
-        public boolean canIncludeInFastPath(Node.Id node)
+        public boolean includeInFastPath(Node.Id node, boolean withFastPathTimestamp)
         {
-            // TODO: this is wrong
-            return true;
+            if (!shard.fastPathElectorate.contains(node))
+                return false;
+
+            ++responsesFromElectorate;
+            return withFastPathTimestamp;
         }
 
         @Override
-        protected int fastPathQuorumSize()
+        public boolean hasMetFastPathCriteria()
         {
-            return shard.recoveryFastPathSize;
+            int rejectedBy = responsesFromElectorate - fastPathAccepts;
+            return rejectedBy > shard.fastPathElectorate.size() - shard.fastPathQuorumSize;
         }
     }
 

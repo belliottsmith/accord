@@ -33,15 +33,15 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         }
 
         @Override
-        public boolean canIncludeInFastPath(Node.Id node)
+        public boolean includeInFastPath(Node.Id node, boolean withFastPathTimestamp)
         {
-            return shard.fastPathElectorate.contains(node);
+            return withFastPathTimestamp && shard.fastPathElectorate.contains(node);
         }
 
         @Override
-        protected int fastPathQuorumSize()
+        public boolean hasMetFastPathCriteria()
         {
-            return shard.fastPathQuorumSize;
+            return fastPathAccepts >= shard.fastPathQuorumSize;
         }
     }
 

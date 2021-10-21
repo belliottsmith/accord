@@ -40,13 +40,13 @@ public class PreacceptTrackerTest
         Shards subShards = shards(topology.get(0));
         FastPathTracker responses = new FastPathTracker<>(subShards, Agree.ShardTracker[]::new, Agree.ShardTracker::new);
 
-        responses.recordSuccess(ids[0]);
+        responses.recordSuccess(ids[0], false);
         assertResponseState(responses, false, false, false, true);
 
-        responses.recordSuccess(ids[1]);
+        responses.recordSuccess(ids[1], false);
         assertResponseState(responses, true, false, false, true);
 
-        responses.recordSuccess(ids[2]);
+        responses.recordSuccess(ids[2], false);
         assertResponseState(responses, true, false, false, false);
     }
 
@@ -56,13 +56,13 @@ public class PreacceptTrackerTest
         Shards subShards = shards(topology.get(0));
         FastPathTracker responses = new FastPathTracker<>(subShards, Agree.ShardTracker[]::new, Agree.ShardTracker::new);
 
-        responses.onFastPathSuccess(ids[0]);
+        responses.recordSuccess(ids[0], true);
         assertResponseState(responses, false, false, false, true);
 
-        responses.onFastPathSuccess(ids[1]);
+        responses.recordSuccess(ids[1], true);
         assertResponseState(responses, true, false, false, true);
 
-        responses.onFastPathSuccess(ids[2]);
+        responses.recordSuccess(ids[2], true);
         assertResponseState(responses, true, true, false, false);
     }
 
@@ -75,14 +75,14 @@ public class PreacceptTrackerTest
         Shards subShards = shards(topology.get(0));
         FastPathTracker responses = new FastPathTracker<>(subShards, Agree.ShardTracker[]::new, Agree.ShardTracker::new);
 
-        responses.recordSuccess(ids[0]);
+        responses.recordSuccess(ids[0], false);
         assertResponseState(responses, false, false, false, true);
 
-        responses.recordSuccess(ids[1]);
+        responses.recordSuccess(ids[1], false);
         assertResponseState(responses, true, false, false, true);
 
         Assertions.assertFalse(subShards.get(0).nodes.contains(ids[4]));
-        responses.recordSuccess(ids[4]);
+        responses.recordSuccess(ids[4], false);
         assertResponseState(responses, true, false, false, true);
     }
 
@@ -92,7 +92,7 @@ public class PreacceptTrackerTest
         Shards subShards = shards(topology.get(0));
         FastPathTracker<?> responses = new FastPathTracker<>(subShards, Agree.ShardTracker[]::new, Agree.ShardTracker::new);
 
-        responses.onFastPathSuccess(ids[0]);
+        responses.recordSuccess(ids[0], true);
         assertResponseState(responses, false, false, false, true);
 
         responses.recordFailure(ids[1]);
@@ -116,20 +116,20 @@ public class PreacceptTrackerTest
         Assertions.assertSame(subShards.get(1), responses.unsafeGet(1).shard);
         Assertions.assertSame(subShards.get(2), responses.unsafeGet(2).shard);
 
-        responses.onFastPathSuccess(ids[1]);
+        responses.recordSuccess(ids[1], true);
         assertResponseState(responses, false, false, false, true);
 
-        responses.onFastPathSuccess(ids[2]);
+        responses.recordSuccess(ids[2], true);
         assertResponseState(responses, false, false, false, true);
 
-        responses.onFastPathSuccess(ids[3]);
+        responses.recordSuccess(ids[3], true);
         // the middle shard will have reached fast path
         Assertions.assertTrue(responses.unsafeGet(1).hasMetFastPathCriteria());
         // but since the others haven't, it won't report it as accepted
         assertResponseState(responses, true, false, false, true);
 
-        responses.onFastPathSuccess(ids[0]);
-        responses.onFastPathSuccess(ids[4]);
+        responses.recordSuccess(ids[0], true);
+        responses.recordSuccess(ids[4], true);
         assertResponseState(responses, true, true, false, false);
     }
 }

@@ -7,31 +7,26 @@ import accord.local.Node;
 import accord.topology.Shard;
 import accord.topology.Shards;
 
-public class FastPathTracker<T extends FastPathTracker.FastPathShardTracker> extends QuorumTracker<T>
+public class FastPathTracker<T extends FastPathTracker.FastPathShardTracker> extends AbstractQuorumTracker<T>
 {
     public abstract static class FastPathShardTracker extends QuorumTracker.QuorumShardTracker
     {
-        private int fastPathAccepts = 0;
+        protected int fastPathAccepts = 0;
 
         public FastPathShardTracker(Shard shard)
         {
             super(shard);
         }
 
-        public abstract boolean canIncludeInFastPath(Node.Id node);
+        public abstract boolean includeInFastPath(Node.Id node, boolean withFastPathTimestamp);
 
-        public void onFastPathSuccess(Node.Id node)
+        public void onSuccess(Node.Id node, boolean withFastPathTimestamp)
         {
-            if (onSuccess(node) && canIncludeInFastPath(node))
+            if (onSuccess(node) && includeInFastPath(node, withFastPathTimestamp))
                 fastPathAccepts++;
         }
 
-        protected abstract int fastPathQuorumSize();
-
-        public boolean hasMetFastPathCriteria()
-        {
-            return fastPathAccepts >= fastPathQuorumSize();
-        }
+        public abstract boolean hasMetFastPathCriteria();
     }
 
     public FastPathTracker(Shards shards, IntFunction<T[]> arrayFactory, Function<Shard, T> trackerFactory)
@@ -39,17 +34,9 @@ public class FastPathTracker<T extends FastPathTracker.FastPathShardTracker> ext
         super(shards, arrayFactory, trackerFactory);
     }
 
-    public void onFastPathSuccess(Node.Id node)
+    public void recordSuccess(Node.Id node, boolean withFastPathTimestamp)
     {
-        forEachTrackerForNode(node, FastPathShardTracker::onFastPathSuccess);
-    }
-
-    public void recordSuccess(Node.Id node, boolean fastPath)
-    {
-        if (fastPath)
-            onFastPathSuccess(node);
-        else
-            recordSuccess(node);
+        forEachTrackerForNode(node, (tracker, n) -> tracker.onSuccess(n, withFastPathTimestamp));
     }
 
     public boolean hasMetFastPathCriteria()

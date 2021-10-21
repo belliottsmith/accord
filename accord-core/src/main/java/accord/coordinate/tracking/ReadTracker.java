@@ -5,7 +5,6 @@ import accord.topology.Shard;
 import accord.topology.Shards;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Sets;
 
 import java.util.*;
 

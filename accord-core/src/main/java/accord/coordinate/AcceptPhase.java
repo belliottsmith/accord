@@ -28,7 +28,7 @@ class AcceptPhase extends CompletableFuture<Agreed>
 
     private List<AcceptOk> acceptOks;
     private Timestamp proposed;
-    private QuorumTracker<?> acceptTracker;
+    private QuorumTracker acceptTracker;
 
     AcceptPhase(Node node, Ballot ballot, TxnId txnId, Txn txn, Shards shards)
     {
@@ -43,7 +43,7 @@ class AcceptPhase extends CompletableFuture<Agreed>
     {
         this.proposed = executeAt;
         this.acceptOks = new ArrayList<>();
-        this.acceptTracker = QuorumTracker.simple(shards);
+        this.acceptTracker = new QuorumTracker(shards);
         node.send(acceptTracker.nodes(), new Accept(ballot, txnId, txn, executeAt, deps), new Callback<AcceptReply>()
         {
             @Override
