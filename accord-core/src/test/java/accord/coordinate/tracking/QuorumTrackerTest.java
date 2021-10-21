@@ -28,14 +28,14 @@ public class QuorumTrackerTest
     {
         Assertions.assertEquals(quorumReached, responses.hasReachedQuorum());
         Assertions.assertEquals(failed, responses.hasFailed());
-        Assertions.assertEquals(hasOutstandingResponses, responses.hasOutstandingResponses());
+        Assertions.assertEquals(hasOutstandingResponses, responses.hasInFlight());
     }
 
     @Test
     void singleShard()
     {
         Shards subShards = shards(topology.get(0));
-        QuorumTracker responses = new QuorumTracker(subShards);
+        QuorumTracker responses = QuorumTracker.simple(subShards);
 
         responses.recordSuccess(ids[0]);
         assertResponseState(responses, false, false, true);
@@ -54,7 +54,7 @@ public class QuorumTrackerTest
     void unexpectedResponsesAreIgnored()
     {
         Shards subShards = shards(topology.get(0));
-        QuorumTracker responses = new QuorumTracker(subShards);
+        QuorumTracker responses = QuorumTracker.simple(subShards);
 
         responses.recordSuccess(ids[0]);
         assertResponseState(responses, false, false, true);
@@ -71,7 +71,7 @@ public class QuorumTrackerTest
     void failure()
     {
         Shards subShards = shards(topology.get(0));
-        QuorumTracker responses = new QuorumTracker(subShards);
+        QuorumTracker responses = QuorumTracker.simple(subShards);
 
         responses.recordSuccess(ids[0]);
         assertResponseState(responses, false, false, true);
@@ -87,7 +87,7 @@ public class QuorumTrackerTest
     void multiShard()
     {
         Shards subShards = new Shards(new Shard[]{topology.get(0), topology.get(1), topology.get(2)});
-        QuorumTracker responses = new QuorumTracker(subShards);
+        QuorumTracker responses = QuorumTracker.simple(subShards);
         /*
         (000, 100](100, 200](200, 300]
         [1, 2, 3] [2, 3, 4] [3, 4, 5]

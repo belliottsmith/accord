@@ -15,12 +15,11 @@ import java.util.function.Predicate;
 abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTracker>
 {
     private final Shards shards;
-    private final Map<Node.Id, List<T>> nodeMap = new HashMap<>();
     private final T[] trackers;
 
     static class ShardTracker
     {
-        final Shard shard;
+        public final Shard shard;
 
         public ShardTracker(Shard shard)
         {
@@ -28,36 +27,21 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         }
     }
 
-    private static <T extends ShardTracker> void indexNodes(T tracker, Map<Node.Id, List<T>> nodeMap, int maxTrackers)
-    {
-        List<Node.Id> nodes = tracker.shard.nodes;
-        for (int i=0, mi=nodes.size(); i<mi; i++)
-        {
-            Node.Id node = nodes.get(i);
-            List<T> trackers = nodeMap.get(node);
-            if (trackers == null)
-            {
-                trackers = new ArrayList<>(maxTrackers);
-                nodeMap.put(node, trackers);
-            }
-            trackers.add(tracker);
-        }
-    }
-
     public AbstractResponseTracker(Shards shards, IntFunction<T[]> factory, Function<Shard, T> trackerFactory)
     {
         this.shards = shards;
-        trackers = factory.apply(shards.size());
-        this.shards.forEach((i, shard) -> {
-            trackers[i] = trackerFactory.apply(shard);
-            indexNodes(trackers[i], nodeMap, shards.size());
-        });
+        this.trackers = factory.apply(shards.size());
+        shards.forEach((i, shard) -> trackers[i] = trackerFactory.apply(shard));
     }
 
-    void applyForNode(Node.Id node, BiConsumer<T, Node.Id> consumer)
+    void forEachTrackerForNode(Node.Id node, BiConsumer<T, Node.Id> consumer)
     {
-        for (T tracker : trackers)
-            consumer.accept(tracker, node);
+        shards.forEachOn(node, (i, shard) -> consumer.accept(trackers[i], node));
+    }
+
+    int matchingTrackersForNode(Node.Id node, Predicate<T> consumer)
+    {
+        return shards.matchesOn(node, (i, shard) -> consumer.test(trackers[i]));
     }
 
     boolean all(Predicate<T> predicate)
@@ -83,18 +67,13 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         return start;
     }
 
-    List<T> trackersForNode(Node.Id node)
-    {
-        return nodeMap.get(node);
-    }
-
     public Set<Node.Id> nodes()
     {
-        return nodeMap.keySet();
+        return shards.nodes();
     }
 
     @VisibleForTesting
-    T unsafeGet(int i)
+    public T unsafeGet(int i)
     {
         return trackers[i];
     }

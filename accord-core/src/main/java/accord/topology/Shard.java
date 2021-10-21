@@ -45,6 +45,11 @@ public class Shard
         return (f + electorate)/2 + 1;
     }
 
+    public int rf()
+    {
+        return nodes.size();
+    }
+
     public boolean contains(Key key)
     {
         return range.containsKey(key);

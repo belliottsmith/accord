@@ -7,9 +7,9 @@ import accord.local.Node;
 import accord.topology.Shard;
 import accord.topology.Shards;
 
-public abstract class FastPathTracker<T extends FastPathTracker.FastPathShardTracker> extends AbstractQuorumTracker<T>
+public class FastPathTracker<T extends FastPathTracker.FastPathShardTracker> extends QuorumTracker<T>
 {
-    public abstract static class FastPathShardTracker extends AbstractQuorumTracker.QuorumShardTracker
+    public abstract static class FastPathShardTracker extends QuorumTracker.QuorumShardTracker
     {
         private int fastPathAccepts = 0;
 
@@ -26,9 +26,9 @@ public abstract class FastPathTracker<T extends FastPathTracker.FastPathShardTra
                 fastPathAccepts++;
         }
 
-        abstract int fastPathQuorumSize();
+        protected abstract int fastPathQuorumSize();
 
-        boolean hasMetFastPathCriteria()
+        public boolean hasMetFastPathCriteria()
         {
             return fastPathAccepts >= fastPathQuorumSize();
         }
@@ -41,7 +41,7 @@ public abstract class FastPathTracker<T extends FastPathTracker.FastPathShardTra
 
     public void onFastPathSuccess(Node.Id node)
     {
-        applyForNode(node, FastPathShardTracker::onFastPathSuccess);
+        forEachTrackerForNode(node, FastPathShardTracker::onFastPathSuccess);
     }
 
     public void recordSuccess(Node.Id node, boolean fastPath)

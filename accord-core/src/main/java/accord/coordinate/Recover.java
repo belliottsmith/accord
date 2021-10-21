@@ -4,9 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import accord.coordinate.tracking.FastPathTracker;
 import accord.coordinate.tracking.QuorumTracker;
-import accord.coordinate.tracking.RecoveryTracker;
 import accord.messages.Preempted;
+import accord.topology.Shard;
 import accord.txn.Ballot;
 import accord.messages.Callback;
 import accord.local.Node;
@@ -29,11 +30,11 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 {
     class RetryAfterCommits implements Callback<WaitOnCommitOk>
     {
-        final QuorumTracker retryTracker;
+        final QuorumTracker<?> retryTracker;
 
         RetryAfterCommits(Dependencies waitOn)
         {
-            retryTracker = new QuorumTracker(shards);
+            retryTracker = QuorumTracker.simple(shards);
             for (Map.Entry<TxnId, Txn> e : waitOn)
                 node.send(shards, new WaitOnCommit(e.getKey(), e.getValue().keys()), this);
         }
@@ -74,8 +75,29 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
         }
     }
 
+    static class ShardTracker extends FastPathTracker.FastPathShardTracker
+    {
+        public ShardTracker(Shard shard)
+        {
+            super(shard);
+        }
+
+        @Override
+        public boolean canIncludeInFastPath(Node.Id node)
+        {
+            // TODO: this is wrong
+            return true;
+        }
+
+        @Override
+        protected int fastPathQuorumSize()
+        {
+            return shard.recoveryFastPathSize;
+        }
+    }
+
     final List<RecoverOk> recoverOks = new ArrayList<>();
-    final RecoveryTracker tracker;
+    final FastPathTracker<ShardTracker> tracker;
 
     public Recover(Node node, Ballot ballot, TxnId txnId, Txn txn)
     {
@@ -85,7 +107,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
     private Recover(Node node, Ballot ballot, TxnId txnId, Txn txn, Shards shards)
     {
         super(node, ballot, txnId, txn, shards);
-        tracker = new RecoveryTracker(shards);
+        tracker = new FastPathTracker<>(shards, ShardTracker[]::new, ShardTracker::new);
         node.send(tracker.nodes(), new BeginRecovery(txnId, txn, ballot), this);
     }
 

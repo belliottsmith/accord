@@ -63,17 +63,17 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
 
     public void recordInflightRead(Id node)
     {
-        applyForNode(node, ReadShardTracker::recordInflightRead);
+        forEachTrackerForNode(node, ReadShardTracker::recordInflightRead);
     }
 
     public void recordReadSuccess(Id node)
     {
-        applyForNode(node, ReadShardTracker::recordReadSuccess);
+        forEachTrackerForNode(node, ReadShardTracker::recordReadSuccess);
     }
 
     public void recordReadFailure(Id node)
     {
-        applyForNode(node, ReadShardTracker::recordReadFailure);
+        forEachTrackerForNode(node, ReadShardTracker::recordReadFailure);
         failures.add(node);
     }
 
@@ -89,14 +89,7 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
 
     private int intersectionSize(Id node, Set<ReadShardTracker> target)
     {
-        List<ReadShardTracker> nodeTrackers = trackersForNode(node);
-        int count = 0;
-        for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
-        {
-            if (target.contains(nodeTrackers.get(i)))
-                count++;
-        }
-        return count;
+        return matchingTrackersForNode(node, target::contains);
     }
 
     private int compareIntersections(Id left, Id right, Set<ReadShardTracker> target)
@@ -122,8 +115,9 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
             return accumulate;
         }, null);
 
-        if (toRead == null || toRead.isEmpty())
+        if (toRead == null)
             return Collections.emptySet();
+        assert !toRead.isEmpty();
 
         Set<Id> nodes = new HashSet<>();
         Set<Id> candidates = new HashSet<>(Sets.difference(nodes(), failures));
@@ -137,9 +131,7 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
             Id node = maxNode.get();
             nodes.add(node);
             candidates.remove(node);
-            List<ReadShardTracker> nodeTrackers = trackersForNode(node);
-            for (int i=0, mi=nodeTrackers.size(); i<mi; i++)
-                toRead.remove(nodeTrackers.get(i));
+            forEachTrackerForNode(node, (tracker, ignore) -> toRead.remove(tracker));
         }
 
         return nodes;

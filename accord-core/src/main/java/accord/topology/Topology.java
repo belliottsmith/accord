@@ -3,10 +3,12 @@ package accord.topology;
 import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
@@ -14,7 +16,9 @@ import accord.api.KeyRange;
 import accord.local.Node.Id;
 import accord.api.Key;
 import accord.txn.Keys;
+import accord.utils.IndexedBiConsumer;
 import accord.utils.IndexedConsumer;
+import accord.utils.IndexedPredicate;
 
 public class Topology extends AbstractCollection<Shard>
 {
@@ -161,6 +165,35 @@ public class Topology extends AbstractCollection<Shard>
         }
     }
 
+    public int matchesOn(Id on, IndexedPredicate<Shard> consumer)
+    {
+        // TODO: this can be done by divide-and-conquer splitting of the lists and recursion, which should be more efficient
+        int count = 0;
+        Shards.NodeInfo info = nodeLookup.get(on);
+        int[] a = supersetIndexes, b = info.supersetIndexes;
+        int ai = 0, bi = 0;
+        while (ai < a.length && bi < b.length)
+        {
+            if (a[ai] == b[bi])
+            {
+                if (consumer.test(ai, shards[a[ai]]))
+                    ++count;
+                ++ai; ++bi;
+            }
+            else if (a[ai] < b[bi])
+            {
+                ai = Arrays.binarySearch(a, ai + 1, a.length, b[bi]);
+                if (ai < 0) ai = -1 -ai;
+            }
+            else
+            {
+                bi = Arrays.binarySearch(b, bi + 1, b.length, a[ai]);
+                if (bi < 0) bi = -1 -bi;
+            }
+        }
+        return count;
+    }
+
     public void forEach(IndexedConsumer<Shard> consumer)
     {
         for (int i = 0 ; i < supersetIndexes.length ; ++i)
@@ -196,9 +229,22 @@ public class Topology extends AbstractCollection<Shard>
         return subsetOfRanges.size();
     }
 
+    public int maxRf()
+    {
+        int rf = Integer.MIN_VALUE;
+        for (int i : supersetIndexes)
+            rf = Math.max(rf, shards[i].rf());
+        return rf;
+    }
+
     public Shard get(int index)
     {
         return shards[supersetIndexes[index]];
+    }
+
+    public Set<Id> nodes()
+    {
+        return nodeLookup.keySet();
     }
 
     public KeyRanges ranges()

@@ -4,9 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 
-import accord.coordinate.tracking.PreacceptTracker;
+import accord.coordinate.tracking.FastPathTracker;
 import accord.messages.Preempted;
 import accord.messages.Timeout;
+import accord.topology.Shard;
 import accord.txn.Ballot;
 import accord.messages.Callback;
 import accord.local.Node;
@@ -26,11 +27,31 @@ import accord.messages.PreAccept.PreAcceptReply;
  */
 class Agree extends AcceptPhase implements Callback<PreAcceptReply>
 {
+    static class ShardTracker extends FastPathTracker.FastPathShardTracker
+    {
+        public ShardTracker(Shard shard)
+        {
+            super(shard);
+        }
+
+        @Override
+        public boolean canIncludeInFastPath(Node.Id node)
+        {
+            return shard.fastPathElectorate.contains(node);
+        }
+
+        @Override
+        protected int fastPathQuorumSize()
+        {
+            return shard.fastPathQuorumSize;
+        }
+    }
+
     final Keys keys;
 
     public enum PreacceptOutcome { COMMIT, ACCEPT }
 
-    private final PreacceptTracker tracker;
+    private final FastPathTracker<ShardTracker> tracker;
 
     private PreacceptOutcome preacceptOutcome;
     private final List<PreAcceptOk> preAcceptOks = new ArrayList<>();
@@ -42,7 +63,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
     {
         super(node, Ballot.ZERO, txnId, txn, node.cluster().forKeys(txn.keys()));
         this.keys = txn.keys();
-        tracker = new PreacceptTracker(shards);
+        tracker = new FastPathTracker<>(shards, ShardTracker[]::new, ShardTracker::new);
 
         node.send(tracker.nodes(), new PreAccept(txnId, txn), this);
     }
@@ -124,7 +145,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
 
     private boolean shouldSlowPathAccept()
     {
-        return !tracker.hasOutstandingResponses() && tracker.hasReachedQuorum();
+        return !tracker.hasInFlight() && tracker.hasReachedQuorum();
     }
 
     private boolean isPreAccepted()
