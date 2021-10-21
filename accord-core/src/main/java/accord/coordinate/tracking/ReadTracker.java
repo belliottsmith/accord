@@ -3,6 +3,8 @@ package accord.coordinate.tracking;
 import accord.local.Node.Id;
 import accord.topology.Shard;
 import accord.topology.Shards;
+
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
 import java.util.*;
@@ -11,26 +13,26 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
 {
     static class ReadShardTracker extends AbstractResponseTracker.ShardTracker
     {
-        private final Set<Id> candidates;
         private final Set<Id> inflight = new HashSet<>();
         private boolean hasData = false;
+        private int contacted;
 
         public ReadShardTracker(Shard shard)
         {
             super(shard);
-            this.candidates = new HashSet<>(shard.nodes);
         }
 
         public void recordInflightRead(Id node)
         {
-            if (candidates.remove(node))
-                inflight.add(node);
+            ++contacted;
+            inflight.add(node);
         }
 
         public void recordReadSuccess(Id node)
         {
-            if (inflight.remove(node))
-                hasData = true;
+            Preconditions.checkArgument(shard.nodes.contains(node));
+            inflight.remove(node);
+            hasData = true;
         }
 
         public boolean shouldRead()
@@ -50,15 +52,16 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
 
         public boolean hasFailed()
         {
-            return !hasData && candidates.isEmpty() && inflight.isEmpty();
+            return !hasData && inflight.isEmpty() && contacted == shard.nodes.size();
         }
     }
 
-    private final Set<Id> failures = new HashSet<>();
+    private final List<Id> candidates;
 
     public ReadTracker(Shards shards)
     {
         super(shards, ReadShardTracker[]::new, ReadShardTracker::new);
+        candidates = new ArrayList<>(shards.nodes());
     }
 
     public void recordInflightRead(Id node)
@@ -74,7 +77,6 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
     public void recordReadFailure(Id node)
     {
         forEachTrackerForNode(node, ReadShardTracker::recordReadFailure);
-        failures.add(node);
     }
 
     public boolean hasCompletedRead()
@@ -117,20 +119,21 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
 
         if (toRead == null)
             return Collections.emptySet();
-        assert !toRead.isEmpty();
 
+        assert !toRead.isEmpty();
         Set<Id> nodes = new HashSet<>();
-        Set<Id> candidates = new HashSet<>(Sets.difference(nodes(), failures));
         while (!toRead.isEmpty())
         {
-            // TODO: Topology needs concept of locality/distance
-            Optional<Id> maxNode = candidates.stream().max((a, b) -> compareIntersections(a, b, toRead));
-            if (maxNode.isEmpty())
+            if (candidates.isEmpty())
                 return null;
 
-            Id node = maxNode.get();
+            // TODO: Topology needs concept of locality/distance
+            candidates.sort((a, b) -> compareIntersections(a, b, toRead));
+
+            int i = candidates.size() - 1;
+            Id node = candidates.get(i);
             nodes.add(node);
-            candidates.remove(node);
+            candidates.remove(candidates.size() - 1);
             forEachTrackerForNode(node, (tracker, ignore) -> toRead.remove(tracker));
         }
 

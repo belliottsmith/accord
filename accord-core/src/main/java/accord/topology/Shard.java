@@ -14,7 +14,9 @@ import com.google.common.collect.ImmutableSet;
 public class Shard
 {
     public final KeyRange range;
+    // TODO: use BTreeSet to combine these two (or introduce version that operates over long values)
     public final List<Id> nodes;
+    public final Set<Id> nodeSet;
     public final Set<Id> fastPathElectorate;
     public final int recoveryFastPathSize;
     public final int fastPathQuorumSize;
@@ -24,6 +26,7 @@ public class Shard
     {
         this.range = range;
         this.nodes = ImmutableList.copyOf(nodes);
+        this.nodeSet = ImmutableSet.copyOf(nodes);
         int f = maxToleratedFailures(nodes.size());
         this.fastPathElectorate = ImmutableSet.copyOf(fastPathElectorate);
         int e = fastPathElectorate.size();
