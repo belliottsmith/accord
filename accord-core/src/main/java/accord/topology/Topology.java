@@ -16,7 +16,6 @@ import accord.api.KeyRange;
 import accord.local.Node.Id;
 import accord.api.Key;
 import accord.txn.Keys;
-import accord.utils.IndexedBiConsumer;
 import accord.utils.IndexedConsumer;
 import accord.utils.IndexedPredicate;
 

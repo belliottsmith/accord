@@ -4,7 +4,6 @@ import accord.local.Node;
 import accord.impl.mock.MockCluster;
 import accord.impl.IntKey;
 import accord.api.Key;
-import accord.messages.Timeout;
 import accord.local.*;
 import accord.txn.Keys;
 import accord.messages.PreAccept;
@@ -12,7 +11,6 @@ import accord.txn.Txn;
 import accord.txn.TxnId;
 
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.CompletionStage;

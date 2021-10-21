@@ -13,11 +13,11 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
+import accord.coordinate.Timeout;
 import accord.local.CommandStore;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.MessageSink;
-import accord.messages.Timeout;
 import accord.messages.Callback;
 import accord.messages.Reply;
 import accord.messages.Request;

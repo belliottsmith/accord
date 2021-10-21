@@ -13,11 +13,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
+import accord.coordinate.Timeout;
 import accord.local.CommandStore;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.Scheduler;
-import accord.messages.Timeout;
 import accord.utils.ThreadPoolScheduler;
 import accord.maelstrom.Packet.Type;
 import accord.api.MessageSink;

@@ -7,7 +7,6 @@ import java.util.concurrent.CompletionStage;
 
 import accord.api.Data;
 import accord.coordinate.tracking.ReadTracker;
-import accord.messages.Preempted;
 import accord.api.Result;
 import accord.messages.Callback;
 import accord.local.Node;
@@ -118,7 +117,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
     {
         // try again with another random node
         // TODO: API hooks
-        if (!(throwable instanceof accord.messages.Timeout))
+        if (!(throwable instanceof Timeout))
             throwable.printStackTrace();
 
         tracker.recordReadFailure(from);

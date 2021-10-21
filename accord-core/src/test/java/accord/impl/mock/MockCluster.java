@@ -1,12 +1,11 @@
 package accord.impl.mock;
 
 import accord.NetworkFilter;
+import accord.coordinate.Timeout;
 import accord.impl.TopologyUtils;
 import accord.local.CommandStore;
-import accord.local.CommandStores;
 import accord.local.Node;
 import accord.local.Node.Id;
-import accord.messages.Timeout;
 import accord.topology.KeyRanges;
 import accord.utils.ThreadPoolScheduler;
 import accord.txn.TxnId;

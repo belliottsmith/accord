@@ -6,7 +6,6 @@ import java.util.Map;
 
 import accord.coordinate.tracking.FastPathTracker;
 import accord.coordinate.tracking.QuorumTracker;
-import accord.messages.Preempted;
 import accord.topology.Shard;
 import accord.txn.Ballot;
 import accord.messages.Callback;
@@ -70,7 +69,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
                 retryTracker.recordFailure(from);
                 if (retryTracker.hasFailed())
-                    completeExceptionally(new accord.messages.Timeout());
+                    completeExceptionally(new Timeout());
             }
         }
     }
@@ -204,6 +203,6 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         tracker.recordFailure(from);
         if (tracker.hasFailed())
-            completeExceptionally(new accord.messages.Timeout());
+            completeExceptionally(new Timeout());
     }
 }

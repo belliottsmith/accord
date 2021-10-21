@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import accord.coordinate.tracking.QuorumTracker;
-import accord.messages.Preempted;
 import accord.txn.Ballot;
 import accord.messages.Callback;
 import accord.local.Node;
@@ -58,7 +57,7 @@ class AcceptPhase extends CompletableFuture<Agreed>
             {
                 acceptTracker.recordFailure(from);
                 if (acceptTracker.hasFailed())
-                    completeExceptionally(new accord.messages.Timeout());
+                    completeExceptionally(new Timeout());
             }
         });
     }

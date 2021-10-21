@@ -5,8 +5,6 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 import accord.coordinate.tracking.FastPathTracker;
-import accord.messages.Preempted;
-import accord.messages.Timeout;
 import accord.topology.Shard;
 import accord.txn.Ballot;
 import accord.messages.Callback;
