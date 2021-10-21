@@ -1,5 +1,6 @@
 package accord.coordinate.tracking;
 
+import accord.coordinate.tracking.FastPathTracker.FastPathShardTracker;
 import accord.topology.Shard;
 import accord.topology.Shards;
 
@@ -7,12 +8,6 @@ public class QuorumTracker extends AbstractQuorumTracker<AbstractQuorumTracker.Q
 {
     public QuorumTracker(Shards shards)
     {
-        super(shards);
-    }
-
-    @Override
-    QuorumShardTracker createShardTracker(Shard shard)
-    {
-        return new QuorumShardTracker(shard);
+        super(shards, QuorumShardTracker[]::new, QuorumShardTracker::new);
     }
 }

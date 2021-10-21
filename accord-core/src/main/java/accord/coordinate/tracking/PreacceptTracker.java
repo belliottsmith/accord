@@ -28,12 +28,6 @@ public class PreacceptTracker extends FastPathTracker<PreacceptTracker.Preaccept
 
     public PreacceptTracker(Shards shards)
     {
-        super(shards);
-    }
-
-    @Override
-    PreacceptShardTracker createShardTracker(Shard shard)
-    {
-        return new PreacceptShardTracker(shard);
+        super(shards, PreacceptShardTracker[]::new, PreacceptShardTracker::new);
     }
 }

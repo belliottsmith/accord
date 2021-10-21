@@ -28,12 +28,6 @@ public class RecoveryTracker extends FastPathTracker<RecoveryTracker.RecoverySha
 
     public RecoveryTracker(Shards shards)
     {
-        super(shards);
-    }
-
-    @Override
-    RecoveryShardTracker createShardTracker(Shard shard)
-    {
-        return new RecoveryShardTracker(shard);
+        super(shards, RecoveryShardTracker[]::new, RecoveryShardTracker::new);
     }
 }

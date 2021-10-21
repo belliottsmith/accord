@@ -6,6 +6,8 @@ import accord.topology.Shards;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTracker> extends AbstractResponseTracker<T>
 {
@@ -57,9 +59,9 @@ public abstract class AbstractQuorumTracker<T extends AbstractQuorumTracker.Quor
         }
     }
 
-    public AbstractQuorumTracker(Shards shards)
+    public AbstractQuorumTracker(Shards shards, IntFunction<T[]> arrayFactory, Function<Shard, T> trackerFactory)
     {
-        super(shards);
+        super(shards, arrayFactory, trackerFactory);
     }
 
     public void recordSuccess(Node.Id node)

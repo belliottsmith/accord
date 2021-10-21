@@ -8,6 +8,8 @@ import com.google.common.annotations.VisibleForTesting;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Predicate;
 
 abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTracker>
@@ -42,17 +44,15 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         }
     }
 
-    public AbstractResponseTracker(Shards shards)
+    public AbstractResponseTracker(Shards shards, IntFunction<T[]> factory, Function<Shard, T> trackerFactory)
     {
         this.shards = shards;
-        trackers = (T[]) new Object[shards.size()];
+        trackers = factory.apply(shards.size());
         this.shards.forEach((i, shard) -> {
-            trackers[i] = createShardTracker(shard);
+            trackers[i] = trackerFactory.apply(shard);
             indexNodes(trackers[i], nodeMap, shards.size());
         });
     }
-
-    abstract T createShardTracker(Shard shard);
 
     void applyForNode(Node.Id node, BiConsumer<T, Node.Id> consumer)
     {
