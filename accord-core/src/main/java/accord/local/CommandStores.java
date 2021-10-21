@@ -81,6 +81,7 @@ public class CommandStores
         KeyRanges added = newTopology.ranges().difference(localTopology.ranges());
         List<KeyRanges> sharded = shardRanges(added, commandStores.length);
         stream().forEach(commands -> commands.updateTopology(newTopology, sharded.get(commands.index()), removed));
+        localTopology = newTopology;
     }
 
     private class ShardSpliterator implements Spliterator<CommandStore>

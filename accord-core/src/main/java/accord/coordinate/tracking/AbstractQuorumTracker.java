@@ -59,11 +59,6 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
         super(shards, arrayFactory, trackerFactory);
     }
 
-    public static AbstractQuorumTracker<QuorumShardTracker> simple(Shards shards)
-    {
-        return new AbstractQuorumTracker<>(shards, QuorumShardTracker[]::new, QuorumShardTracker::new);
-    }
-
     // TODO: refactor to return true if this call caused the state change to failed
     public void recordFailure(Node.Id node)
     {

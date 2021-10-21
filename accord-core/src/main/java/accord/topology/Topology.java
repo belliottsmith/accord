@@ -3,7 +3,6 @@ package accord.topology;
 import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -25,7 +24,7 @@ public class Topology extends AbstractCollection<Shard>
     final KeyRanges ranges;
     final Map<Id, Shards.NodeInfo> nodeLookup;
     final KeyRanges subsetOfRanges;
-    final int[] supersetIndexes;
+    final int[] supersetRangeIndexes;
 
     static class NodeInfo
     {
@@ -50,7 +49,7 @@ public class Topology extends AbstractCollection<Shard>
         this.ranges = new KeyRanges(Arrays.stream(shards).map(shard -> shard.range).toArray(KeyRange[]::new));
         this.shards = shards;
         this.subsetOfRanges = ranges;
-        this.supersetIndexes = IntStream.range(0, shards.length).toArray();
+        this.supersetRangeIndexes = IntStream.range(0, shards.length).toArray();
         this.nodeLookup = new HashMap<>();
         Map<Id, List<Integer>> build = new HashMap<>();
         for (int i = 0 ; i < shards.length ; ++i)
@@ -72,7 +71,7 @@ public class Topology extends AbstractCollection<Shard>
         this.ranges = ranges;
         this.nodeLookup = nodeLookup;
         this.subsetOfRanges = subsetOfRanges;
-        this.supersetIndexes = supersetIndexes;
+        this.supersetRangeIndexes = supersetIndexes;
     }
 
     public Shards forNode(Id node)
@@ -102,7 +101,7 @@ public class Topology extends AbstractCollection<Shard>
             subsetIndex = subsetOfRanges.rangeIndexForKey(subsetIndex, subsetOfRanges.size(), select.get(i));
             if (subsetIndex < 0 || subsetIndex >= subsetOfRanges.size())
                 throw new IllegalArgumentException("Range not found for " + select.get(i));
-            int supersetIndex = supersetIndexes[subsetIndex];
+            int supersetIndex = supersetRangeIndexes[subsetIndex];
             newSubset[count++] = supersetIndex;
             Shard shard = shards[supersetIndex];
             // find the first key outside this range
@@ -111,6 +110,14 @@ public class Topology extends AbstractCollection<Shard>
         if (count != newSubset.length)
             newSubset = Arrays.copyOf(newSubset, count);
         KeyRanges rangeSubset = ranges.select(newSubset);
+
+        // TODO: more efficient sharing of nodeLookup state
+        Map<Id, NodeInfo> nodeLookup = new HashMap<>();
+        for (Map.Entry<Id, NodeInfo> e : this.nodeLookup.entrySet())
+        {
+            if (intersects(newSubset, e.getValue().supersetIndexes))
+                nodeLookup.put(e.getKey(), e.getValue());
+        }
         return new Shards(shards, ranges, nodeLookup, rangeSubset, newSubset);
     }
 
@@ -121,11 +128,11 @@ public class Topology extends AbstractCollection<Shard>
     public void forEachOn(Id on, Keys select, IndexedConsumer<Shard> consumer)
     {
         Shards.NodeInfo info = nodeLookup.get(on);
-        for (int i = 0, j = 0, k = 0 ; i < select.size() && j < supersetIndexes.length && k < info.supersetIndexes.length ;)
+        for (int i = 0, j = 0, k = 0 ; i < select.size() && j < supersetRangeIndexes.length && k < info.supersetIndexes.length ;)
         {
             Key key = select.get(i);
-            Shard shard = shards[supersetIndexes[j]];
-            int c = supersetIndexes[j] - info.supersetIndexes[k];
+            Shard shard = shards[supersetRangeIndexes[j]];
+            int c = supersetRangeIndexes[j] - info.supersetIndexes[k];
             if (c < 0) ++j;
             else if (c > 0) ++k;
             else
@@ -142,7 +149,7 @@ public class Topology extends AbstractCollection<Shard>
     {
         // TODO: this can be done by divide-and-conquer splitting of the lists and recursion, which should be more efficient
         Shards.NodeInfo info = nodeLookup.get(on);
-        int[] a = supersetIndexes, b = info.supersetIndexes;
+        int[] a = supersetRangeIndexes, b = info.supersetIndexes;
         int ai = 0, bi = 0;
         while (ai < a.length && bi < b.length)
         {
@@ -169,7 +176,7 @@ public class Topology extends AbstractCollection<Shard>
         // TODO: this can be done by divide-and-conquer splitting of the lists and recursion, which should be more efficient
         int count = 0;
         Shards.NodeInfo info = nodeLookup.get(on);
-        int[] a = supersetIndexes, b = info.supersetIndexes;
+        int[] a = supersetRangeIndexes, b = info.supersetIndexes;
         int ai = 0, bi = 0;
         while (ai < a.length && bi < b.length)
         {
@@ -195,17 +202,17 @@ public class Topology extends AbstractCollection<Shard>
 
     public void forEach(IndexedConsumer<Shard> consumer)
     {
-        for (int i = 0 ; i < supersetIndexes.length ; ++i)
-            consumer.accept(i, shards[supersetIndexes[i]]);
+        for (int i = 0; i < supersetRangeIndexes.length ; ++i)
+            consumer.accept(i, shards[supersetRangeIndexes[i]]);
     }
 
     public <T> T[] select(Keys select, T[] indexedByShard, IntFunction<T[]> constructor)
     {
         List<T> selection = new ArrayList<>();
-        for (int i = 0, j = 0 ; i < select.size() && j < supersetIndexes.length ;)
+        for (int i = 0, j = 0 ; i < select.size() && j < supersetRangeIndexes.length ;)
         {
             Key k = select.get(i);
-            Shard shard = shards[supersetIndexes[j]];
+            Shard shard = shards[supersetRangeIndexes[j]];
 
             int c = shard.range.compareKey(k);
             if (c < 0) ++i;
@@ -219,7 +226,7 @@ public class Topology extends AbstractCollection<Shard>
     @Override
     public Iterator<Shard> iterator()
     {
-        return IntStream.of(supersetIndexes).mapToObj(i -> shards[i]).iterator();
+        return IntStream.of(supersetRangeIndexes).mapToObj(i -> shards[i]).iterator();
     }
 
     @Override
@@ -231,14 +238,14 @@ public class Topology extends AbstractCollection<Shard>
     public int maxRf()
     {
         int rf = Integer.MIN_VALUE;
-        for (int i : supersetIndexes)
+        for (int i : supersetRangeIndexes)
             rf = Math.max(rf, shards[i].rf());
         return rf;
     }
 
     public Shard get(int index)
     {
-        return shards[supersetIndexes[index]];
+        return shards[supersetRangeIndexes[index]];
     }
 
     public Set<Id> nodes()
@@ -249,5 +256,17 @@ public class Topology extends AbstractCollection<Shard>
     public KeyRanges ranges()
     {
         return ranges;
+    }
+
+    private static boolean intersects(int[] is, int[] js)
+    {
+        for (int i = 0, j = 0 ; i < is.length && j < js.length ;)
+        {
+            int c = is[i] - js[j];
+            if (c < 0) ++i;
+            else if (c > 0) ++j;
+            else return true;
+        }
+        return false;
     }
 }
