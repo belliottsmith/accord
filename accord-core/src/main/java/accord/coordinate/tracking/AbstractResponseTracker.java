@@ -27,10 +27,10 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
         }
     }
 
-    public AbstractResponseTracker(Shards shards, IntFunction<T[]> factory, Function<Shard, T> trackerFactory)
+    public AbstractResponseTracker(Shards shards, IntFunction<T[]> arrayFactory, Function<Shard, T> trackerFactory)
     {
         this.shards = shards;
-        this.trackers = factory.apply(shards.size());
+        this.trackers = arrayFactory.apply(shards.size());
         shards.forEach((i, shard) -> trackers[i] = trackerFactory.apply(shard));
     }
 

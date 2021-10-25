@@ -132,7 +132,7 @@ public class ReadTracker extends AbstractResponseTracker<ReadTracker.ReadShardTr
             int i = candidates.size() - 1;
             Id node = candidates.get(i);
             nodes.add(node);
-            candidates.remove(candidates.size() - 1);
+            candidates.remove(i);
             forEachTrackerForNode(node, (tracker, ignore) -> toRead.remove(tracker));
         }
 
