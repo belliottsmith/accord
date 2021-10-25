@@ -96,8 +96,8 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
         @Override
         public boolean hasMetFastPathCriteria()
         {
-            int rejectedBy = responsesFromElectorate - fastPathAccepts;
-            return rejectedBy > shard.fastPathElectorate.size() - shard.fastPathQuorumSize;
+            int fastPathRejections = responsesFromElectorate - fastPathAccepts;
+            return fastPathRejections <= shard.fastPathElectorate.size() - shard.fastPathQuorumSize;
         }
     }
 
