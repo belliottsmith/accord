@@ -88,15 +88,15 @@ public class Txn
         return "read:" + read.toString() + (update != null ? ", update:" + update : "");
     }
 
-    public Data read(KeyRanges range, Store store)
+    public Data read(KeyRanges range, Store store, Timestamp executeAt)
     {
-        return read.read(range, store);
+        return read.read(range, executeAt, store);
     }
 
     public Data read(Command command)
     {
         CommandStore commandStore = command.commandStore;
-        return read(commandStore.ranges(), commandStore.store());
+        return read(commandStore.ranges(), commandStore.store(), command.executeAt());
     }
 
     public Timestamp maxConflict(CommandStore commandStore)

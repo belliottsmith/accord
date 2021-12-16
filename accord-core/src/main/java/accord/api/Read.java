@@ -1,6 +1,7 @@
 package accord.api;
 
 import accord.topology.KeyRanges;
+import accord.txn.Timestamp;
 
 /**
  * A read to be performed on potentially multiple shards, the inputs of which may be fed to a {@link Query}
@@ -9,5 +10,5 @@ import accord.topology.KeyRanges;
  */
 public interface Read
 {
-    Data read(KeyRanges ranges, Store store);
+    Data read(KeyRanges ranges, Timestamp executeAt, Store store);
 }

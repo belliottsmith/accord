@@ -19,7 +19,7 @@ public class MockStore implements Store
     };
 
     public static final Result RESULT = new Result() {};
-    public static final Read READ = (range, store) -> DATA;
+    public static final Read READ = (range, executeAt, store) -> DATA;
     public static final Query QUERY = data -> RESULT;
     public static final Write WRITE = (range, executeAt, store) -> {};
     public static final Update UPDATE = data -> WRITE;
