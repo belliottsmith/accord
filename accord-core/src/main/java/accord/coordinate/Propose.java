@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
 import accord.txn.Ballot;
 import accord.messages.Callback;
@@ -18,24 +19,26 @@ import accord.messages.Accept;
 import accord.messages.Accept.AcceptOk;
 import accord.messages.Accept.AcceptReply;
 
-class AcceptPhase extends CompletableFuture<Agreed>
+class Propose extends CompletableFuture<Agreed>
 {
     final Node node;
     final Ballot ballot;
     final TxnId txnId;
     final Txn txn;
+    final Key homeKey;
     final Shards shards; // TODO: remove, hide in participants
 
     private List<AcceptOk> acceptOks;
     private Timestamp proposed;
     private QuorumTracker acceptTracker;
 
-    AcceptPhase(Node node, Ballot ballot, TxnId txnId, Txn txn, Shards shards)
+    Propose(Node node, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Shards shards)
     {
         this.node = node;
         this.ballot = ballot;
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
         this.shards = shards;
     }
 
@@ -44,7 +47,7 @@ class AcceptPhase extends CompletableFuture<Agreed>
         this.proposed = executeAt;
         this.acceptOks = new ArrayList<>();
         this.acceptTracker = new QuorumTracker(shards);
-        node.send(acceptTracker.nodes(), new Accept(ballot, txnId, txn, executeAt, deps), new Callback<AcceptReply>()
+        node.send(acceptTracker.nodes(), new Accept(ballot, txnId, txn, homeKey, executeAt, deps), new Callback<AcceptReply>()
         {
             @Override
             public void onSuccess(Id from, AcceptReply response)
@@ -91,6 +94,6 @@ class AcceptPhase extends CompletableFuture<Agreed>
 
     protected void agreed(Timestamp executeAt, Dependencies deps)
     {
-        complete(new Agreed(txnId, txn, executeAt, deps, shards, null, null));
+        complete(new Agreed(txnId, txn, homeKey, executeAt, deps, shards, null, null));
     }
 }

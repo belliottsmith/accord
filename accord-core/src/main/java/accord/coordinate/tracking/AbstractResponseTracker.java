@@ -1,6 +1,7 @@
 package accord.coordinate.tracking;
 
 import accord.local.Node;
+import accord.local.Node.Id;
 import accord.topology.Shard;
 import accord.topology.Shards;
 import com.google.common.annotations.VisibleForTesting;
@@ -8,6 +9,7 @@ import com.google.common.annotations.VisibleForTesting;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
@@ -42,6 +44,11 @@ abstract class AbstractResponseTracker<T extends AbstractResponseTracker.ShardTr
     int matchingTrackersForNode(Node.Id node, Predicate<T> consumer)
     {
         return shards.matchesOn(node, (i, shard) -> consumer.test(trackers[i]));
+    }
+
+    int matchingTrackersForNode(Node.Id node, BiPredicate<T, Id> consumer)
+    {
+        return shards.matchesOn(node, (i, shard) -> consumer.test(trackers[i], node));
     }
 
     boolean all(Predicate<T> predicate)

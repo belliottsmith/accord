@@ -4,7 +4,9 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 
+import accord.api.Key;
 import accord.api.Result;
+import accord.local.Node.Id;
 import accord.txn.Ballot;
 import accord.txn.Dependencies;
 import accord.txn.Timestamp;
@@ -20,18 +22,21 @@ import static accord.local.Status.NotWitnessed;
 import static accord.local.Status.PreAccepted;
 import static accord.local.Status.ReadyToExecute;
 
+// TODO: this needs to be backed by persistent storage
 public class Command implements Listener, Consumer<Listener>
 {
     public final CommandStore commandStore;
     private final TxnId txnId;
-    private Txn txn;
+    private Key homeKey, someKey; // TODO: compress these
+    private Txn txn; // TODO: only store this on the home shard, or split to each shard independently
     private Ballot promised = Ballot.ZERO, accepted = Ballot.ZERO;
-    private Timestamp executeAt;
+    private Timestamp executeAt, executeAtExclusiveLowerBound; // TODO: compress these states together
     private Dependencies deps = new Dependencies();
     private Writes writes;
     private Result result;
 
     private Status status = NotWitnessed;
+    private boolean isGloballyPersistent; // only set on home shard
 
     private NavigableMap<TxnId, Command> waitingOnCommit;
     private NavigableMap<Timestamp, Command> waitingOnApply;
@@ -99,32 +104,59 @@ public class Command implements Listener, Consumer<Listener>
         return this.status == status;
     }
 
+    public boolean isGloballyPersistent()
+    {
+        return isGloballyPersistent;
+    }
+
+    public void setGloballyPersistent()
+    {
+        isGloballyPersistent = true;
+    }
+
     // requires that command != null
     // relies on mutual exclusion for each key
-    public boolean witness(Txn txn)
+    // note: we do not set status = newStatus, we only use it to decide how we register with the retryLog
+    private boolean witness(Txn txn, Key homeKey, Status newStatus)
     {
+        if (newStatus.compareTo(Accepted) >= 0 && !hasBeen(Accepted) && !isHomeShard(homeKey))
+            commandStore.progressLog().nonHomePostPreaccept(txnId);
+
         if (promised.compareTo(Ballot.ZERO) > 0)
             return false;
+
+        if (newStatus.compareTo(Committed) < 0 && !hasBeen(Committed) && isHomeShard(homeKey))
+            commandStore.progressLog().uncommitted(txnId);
 
         if (hasBeen(PreAccepted))
             return true;
 
-        Timestamp max = txn.maxConflict(commandStore);
+        // TODO (now): we should probably only report this if the node isn't a replica
+        if (!isHomeShard(homeKey) && newStatus.compareTo(PreAccepted) <= 0)
+            commandStore.progressLog().nonHomePreaccept(txnId);
+
+        Timestamp max = commandStore.maxConflict(txn.keys);
         // unlike in the Accord paper, we partition shards within a node, so that to ensure a total order we must either:
         //  - use a global logical clock to issue new timestamps; or
         //  - assign each shard _and_ process a unique id, and use both as components of the timestamp
         Timestamp witnessed = txnId.compareTo(max) > 0 ? txnId : commandStore.uniqueNow(max);
 
         this.txn = txn;
+        this.homeKey = homeKey;
         this.executeAt = witnessed;
         this.status = PreAccepted;
 
-        txn.register(commandStore, this);
+        txn.keys().forEach(key -> commandStore.commandsForKey(key).register(this));
         listeners.forEach(this);
         return true;
     }
 
-    public boolean accept(Ballot ballot, Txn txn, Timestamp executeAt, Dependencies deps)
+    public boolean preaccept(Txn txn, Key homeKey)
+    {
+        return witness(txn, homeKey, PreAccepted);
+    }
+
+    public boolean accept(Ballot ballot, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
         if (this.promised.compareTo(ballot) > 0)
             return false;
@@ -132,17 +164,18 @@ public class Command implements Listener, Consumer<Listener>
         if (hasBeen(Committed))
             return false;
 
-        witness(txn);
+        witness(txn, homeKey, Accepted);
         this.deps = deps;
         this.executeAt = executeAt;
         promised = accepted = ballot;
         status = Accepted;
+
         listeners.forEach(this);
         return true;
     }
 
     // relies on mutual exclusion for each key
-    public boolean commit(Txn txn, Dependencies deps, Timestamp executeAt)
+    public boolean commit(Txn txn, Key homeKey, Dependencies deps, Timestamp executeAt)
     {
         if (hasBeen(Committed))
         {
@@ -152,7 +185,7 @@ public class Command implements Listener, Consumer<Listener>
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
         }
 
-        witness(txn);
+        witness(txn, homeKey, Committed);
         this.status = Committed;
         this.deps = deps;
         this.executeAt = executeAt;
@@ -167,7 +200,7 @@ public class Command implements Listener, Consumer<Listener>
                 default:
                     throw new IllegalStateException();
                 case NotWitnessed:
-                    command.witness(deps.get(command.txnId));
+                    command.someKey(savedDeps().get(id).keys.get(0));
                 case PreAccepted:
                 case Accepted:
                     // we don't know when these dependencies will execute, and cannot execute until we do
@@ -192,17 +225,21 @@ public class Command implements Listener, Consumer<Listener>
             if (waitingOnApply.isEmpty())
                 waitingOnApply = null;
         }
+
+        if (isHomeShard()) commandStore.progressLog().committed(txnId);
+        else commandStore.progressLog().nonHomeCommit(txnId);
+
         listeners.forEach(this);
         maybeExecute();
         return true;
     }
 
-    public boolean apply(Txn txn, Dependencies deps, Timestamp executeAt, Writes writes, Result result)
+    public boolean apply(Txn txn, Key homeKey, Dependencies deps, Timestamp executeAt, Writes writes, Result result)
     {
         if (hasBeen(Executed) && executeAt.equals(this.executeAt))
             return false;
         else if (!hasBeen(Committed))
-            commit(txn, deps, executeAt);
+            commit(txn, homeKey, deps, executeAt);
         else if (!executeAt.equals(this.executeAt))
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
 
@@ -210,17 +247,20 @@ public class Command implements Listener, Consumer<Listener>
         this.writes = writes;
         this.result = result;
         this.status = Executed;
+
+        this.commandStore.progressLog().executed(txnId);
+
         this.listeners.forEach(this);
         maybeExecute();
         return true;
     }
 
-    public boolean recover(Txn txn, Ballot ballot)
+    public boolean recover(Txn txn, Key homeKey, Ballot ballot)
     {
         if (this.promised.compareTo(ballot) > 0)
             return false;
 
-        witness(txn);
+        witness(txn, homeKey, PreAccepted);
         this.promised = ballot;
         return true;
     }
@@ -241,6 +281,12 @@ public class Command implements Listener, Consumer<Listener>
     {
         switch (command.status)
         {
+            case NotWitnessed:
+            case PreAccepted:
+            case Accepted:
+                if (command.executeAtExclusiveLowerBound == null || command.executeAtExclusiveLowerBound.compareTo(executeAt) < 0)
+                    break;
+
             case Committed:
             case ReadyToExecute:
             case Executed:
@@ -271,13 +317,23 @@ public class Command implements Listener, Consumer<Listener>
             return;
 
         if (waitingOnApply != null)
-            return;
+        {
+            Command blockedBy = blockedBy();
+            if (blockedBy != null)
+            {
+                commandStore.progressLog().waitingOn(txnId, blockedBy.txnId);
+                return;
+            }
+            assert waitingOnApply == null;
+        }
 
         switch (status)
         {
             case Committed:
                 // TODO: maintain distinct ReadyToRead and ReadyToWrite states
                 status = ReadyToExecute;
+                if (isHomeShard())
+                    commandStore.progressLog().readyToExecute(txnId);
                 listeners.forEach(this);
                 break;
             case Executed:
@@ -287,21 +343,29 @@ public class Command implements Listener, Consumer<Listener>
         }
     }
 
-    private void updatePredecessor(Command committed)
+    /**
+     * @param dependency is either committed or has an executeAtExclusiveLowerBound >= our executeAt
+     */
+    private void updatePredecessor(Command dependency)
     {
-        if (committed.executeAt.compareTo(executeAt) > 0)
+        if (!dependency.hasBeen(Committed))
+        {
+            assert dependency.executeAtExclusiveLowerBound != null && dependency.executeAtExclusiveLowerBound.compareTo(executeAt) >= 0;
+            dependency.removeListener(this);
+        }
+        else if (dependency.executeAt.compareTo(executeAt) > 0)
         {
             // cannot be a predecessor if we execute later
-            committed.removeListener(this);
+            dependency.removeListener(this);
         }
-        else if (committed.hasBeen(Applied))
+        else if (dependency.hasBeen(Applied))
         {
-            waitingOnApply.remove(committed.executeAt);
-            committed.removeListener(this);
+            waitingOnApply.remove(dependency.executeAt);
+            dependency.removeListener(this);
         }
         else
         {
-            waitingOnApply.putIfAbsent(committed.executeAt, committed);
+            waitingOnApply.putIfAbsent(dependency.executeAt, dependency);
         }
     }
 
@@ -315,6 +379,61 @@ public class Command implements Listener, Consumer<Listener>
         while (null != (next = cur.directlyBlockedBy()))
             cur = next;
         return cur;
+    }
+
+    /**
+     * A key nominated to represent the "home" shard - only members of the home shard may be nominated to recover
+     * a transaction, to reduce the cluster-wide overhead of ensuring progress. A transaction that has only been
+     * witnessed at PreAccept may however trigger a process of ensuring the home shard is durably informed of
+     * the transaction.
+     */
+    public Key homeKey()
+    {
+        return homeKey;
+    }
+
+    public void homeKey(Key homeKey)
+    {
+        if (this.homeKey == null) this.homeKey = homeKey;
+        else if (!this.homeKey.equals(homeKey)) throw new AssertionError();
+    }
+
+    public Key someKey()
+    {
+        return homeKey != null ? homeKey : someKey;
+    }
+
+    private void someKey(Key key)
+    {
+        if (someKey == null && homeKey == null)
+            someKey = key;
+    }
+
+    // TODO: maybe make this persistent, or abstract so implementation may do so
+    public void mustExecuteAfter(Timestamp exclusiveLowerBound)
+    {
+        if (executeAtExclusiveLowerBound == null || executeAtExclusiveLowerBound.compareTo(exclusiveLowerBound) < 0)
+        {
+            executeAtExclusiveLowerBound = exclusiveLowerBound;
+            listeners.forEach(this);
+        }
+    }
+
+    private boolean isHomeShard()
+    {
+        return isHomeShard(homeKey());
+    }
+
+    private boolean isHomeShard(Key homeKey)
+    {
+        return commandStore.ranges().contains(homeKey);
+    }
+
+    private Id coordinator()
+    {
+        if (promised.equals(Ballot.ZERO))
+            return txnId.node;
+        return promised.node;
     }
 
     private Command directlyBlockedBy()

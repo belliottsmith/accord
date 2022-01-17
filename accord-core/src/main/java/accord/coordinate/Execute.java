@@ -1,19 +1,17 @@
 package accord.coordinate;
 
-import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import accord.api.Data;
+import accord.api.Key;
 import accord.coordinate.tracking.ReadTracker;
 import accord.api.Result;
 import accord.messages.Callback;
 import accord.local.Node;
 import accord.txn.Dependencies;
-import accord.messages.Apply;
 import accord.messages.ReadData.ReadReply;
-import accord.messages.ReadData.ReadWaiting;
 import accord.topology.Shards;
 import accord.local.Node.Id;
 import accord.txn.Timestamp;
@@ -30,6 +28,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
     final Node node;
     final TxnId txnId;
     final Txn txn;
+    final Key homeKey;
     final Timestamp executeAt;
     final Shards shards;
     final Keys keys;
@@ -43,6 +42,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         this.node = node;
         this.txnId = agreed.txnId;
         this.txn = agreed.txn;
+        this.homeKey = agreed.homeKey;
         this.keys = txn.keys();
         this.deps = agreed.deps;
         this.executeAt = agreed.executeAt;
@@ -53,9 +53,8 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         // TODO: perhaps compose these different behaviours differently?
         if (agreed.applied != null)
         {
-            Apply send = new Apply(txnId, txn, executeAt, agreed.deps, agreed.applied, agreed.result);
-            node.send(shards, send);
             complete(agreed.result);
+            Persist.persist(node, shards, txnId, homeKey, txn, executeAt, deps, agreed.applied, agreed.result);
         }
         else
         {
@@ -63,7 +62,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
             for (Node.Id to : tracker.nodes())
             {
                 boolean read = readSet.contains(to);
-                Commit send = new Commit(txnId, txn, executeAt, agreed.deps, read);
+                Commit send = new Commit(txnId, txn, homeKey, executeAt, agreed.deps, read);
                 if (read)
                 {
                     node.send(to, send, this);
@@ -72,7 +71,6 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
                 {
                     node.send(to, send);
                 }
-
             }
         }
     }
@@ -84,13 +82,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
             return;
 
         if (!reply.isFinal())
-        {
-            ReadWaiting waiting = (ReadWaiting) reply;
-            // TODO first see if we can collect newer information (from ourselves or others), and if so send it
-            // otherwise, try to complete the transaction
-            node.recover(waiting.txnId, waiting.txn);
             return;
-        }
 
         if (!reply.isOK())
         {
@@ -106,8 +98,8 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         if (tracker.hasCompletedRead())
         {
             Result result = txn.result(data);
-            node.send(shards, new Apply(txnId, txn, executeAt, deps, txn.execute(executeAt, data), result));
             complete(result);
+            Persist.persist(node, shards, txnId, homeKey, txn, executeAt, deps, txn.execute(executeAt, data), result);
         }
     }
 
@@ -119,6 +111,8 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
         if (!(throwable instanceof Timeout))
             throwable.printStackTrace();
 
+        // TODO: introduce two tiers of timeout, one to trigger a retry, and another to mark the original as failed
+        // TODO: if we fail, nominate another coordinator from the homeKey shard to try
         tracker.recordReadFailure(from);
         Set<Id> readFrom = tracker.computeMinimalReadSetAndMarkInflight();
         if (readFrom == null)
@@ -127,7 +121,7 @@ class Execute extends CompletableFuture<Result> implements Callback<ReadReply>
             completeExceptionally(throwable);
         }
         else
-            node.send(readFrom, new ReadData(txnId, txn), this);
+            node.send(readFrom, new ReadData(txnId, txn, homeKey), this);
     }
 
     static CompletionStage<Result> execute(Node instance, Agreed agreed)

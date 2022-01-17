@@ -1,7 +1,6 @@
 package accord.messages;
 
-import accord.messages.Reply;
-import accord.messages.Request;
+import accord.api.Key;
 import accord.txn.Ballot;
 import accord.local.Node;
 import accord.txn.Timestamp;
@@ -17,14 +16,16 @@ public class Accept implements Request
     public final Ballot ballot;
     public final TxnId txnId;
     public final Txn txn;
+    public final Key homeKey;
     public final Timestamp executeAt;
     public final Dependencies deps;
 
-    public Accept(Ballot ballot, TxnId txnId, Txn txn, Timestamp executeAt, Dependencies deps)
+    public Accept(Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
         this.ballot = ballot;
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
         this.executeAt = executeAt;
         this.deps = deps;
     }
@@ -33,7 +34,7 @@ public class Accept implements Request
     {
         on.reply(replyToNode, replyToMessage, txn.local(on).map(instance -> {
             Command command = instance.command(txnId);
-            if (!command.accept(ballot, txn, executeAt, deps))
+            if (!command.accept(ballot, txn, homeKey, executeAt, deps))
                 return new AcceptNack(command.promised());
             return new AcceptOk(calculateDeps(instance, txnId, txn, executeAt));
         }).reduce((r1, r2) -> {

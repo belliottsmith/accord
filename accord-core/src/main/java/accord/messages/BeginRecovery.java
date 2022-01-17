@@ -1,6 +1,12 @@
 package accord.messages;
 
+import java.util.stream.Stream;
+
+import accord.api.Key;
 import accord.api.Result;
+import accord.local.CommandStore;
+import accord.local.CommandsForKey;
+import accord.txn.Keys;
 import accord.txn.Writes;
 import accord.txn.Ballot;
 import accord.local.Node;
@@ -23,12 +29,14 @@ public class BeginRecovery implements Request
 {
     final TxnId txnId;
     final Txn txn;
+    final Key homeKey;
     final Ballot ballot;
 
-    public BeginRecovery(TxnId txnId, Txn txn, Ballot ballot)
+    public BeginRecovery(TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
     {
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
         this.ballot = ballot;
     }
 
@@ -37,7 +45,7 @@ public class BeginRecovery implements Request
         RecoverReply reply = txn.local(node).map(instance -> {
             Command command = instance.command(txnId);
 
-            if (!command.recover(txn, ballot))
+            if (!command.recover(txn, homeKey, ballot))
                 return new RecoverNack(command.promised());
 
             Dependencies deps = command.status() == PreAccepted ? calculateDeps(instance, txnId, txn, txnId)
@@ -53,18 +61,18 @@ public class BeginRecovery implements Request
             }
             else
             {
-                rejectsFastPath = txn.uncommittedStartedAfter(instance, txnId)
+                rejectsFastPath = uncommittedStartedAfter(instance, txnId, txn.keys)
                                              .filter(c -> c.hasBeen(Accepted))
                                              .anyMatch(c -> !c.savedDeps().contains(txnId));
                 if (!rejectsFastPath)
-                    rejectsFastPath = txn.committedExecutesAfter(instance, txnId)
+                    rejectsFastPath = committedExecutesAfter(instance, txnId, txn.keys)
                                          .anyMatch(c -> !c.savedDeps().contains(txnId));
 
-                earlierCommittedWitness = txn.committedStartedBefore(instance, txnId)
+                earlierCommittedWitness = committedStartedBefore(instance, txnId, txn.keys)
                                              .filter(c -> c.savedDeps().contains(txnId))
                                              .collect(Dependencies::new, Dependencies::add, Dependencies::addAll);
 
-                earlierAcceptedNoWitness = txn.uncommittedStartedBefore(instance, txnId)
+                earlierAcceptedNoWitness = uncommittedStartedBefore(instance, txnId, txn.keys)
                                               .filter(c -> c.is(Accepted) && !c.savedDeps().contains(txnId))
                                               .filter(c -> c.savedDeps().contains(txnId))
                                               .collect(Dependencies::new, Dependencies::add, Dependencies::addAll);
@@ -133,7 +141,7 @@ public class BeginRecovery implements Request
         {
             // disseminate directly
             RecoverOk ok = (RecoverOk) reply;
-            node.send(node.cluster().forKeys(txn.keys), new Apply(txnId, txn, ok.executeAt, ok.deps, ok.writes, ok.result));
+            node.send(node.cluster().forKeys(txn.keys), new Apply(txnId, txn, homeKey, ok.executeAt, ok.deps, ok.writes, ok.result));
         }
     }
 
@@ -221,5 +229,37 @@ public class BeginRecovery implements Request
                ", txn:" + txn +
                ", ballot:" + ballot +
                '}';
+    }
+
+    private static Stream<Command> uncommittedStartedBefore(CommandStore commandStore, TxnId startedBefore, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return forKey.uncommitted.headMap(startedBefore, false).values().stream();
+        });
+    }
+
+    private static Stream<Command> committedStartedBefore(CommandStore commandStore, TxnId startedBefore, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return forKey.committedById.headMap(startedBefore, false).values().stream();
+        });
+    }
+
+    private static Stream<Command> uncommittedStartedAfter(CommandStore commandStore, TxnId startedAfter, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return forKey.uncommitted.tailMap(startedAfter, false).values().stream();
+        });
+    }
+
+    private static Stream<Command> committedExecutesAfter(CommandStore commandStore, TxnId startedAfter, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return forKey.committedByExecuteAt.tailMap(startedAfter, false).values().stream();
+        });
     }
 }

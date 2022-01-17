@@ -1,7 +1,7 @@
 package accord.local;
 
 import accord.Utils;
-import accord.api.KeyRange;
+import accord.topology.KeyRange;
 import accord.impl.IntKey;
 import accord.impl.TopologyUtils;
 import accord.topology.KeyRanges;
@@ -27,7 +27,7 @@ public class CommandStoreTest
         KeyRanges shards = CommandStores.shardRanges(local.ranges(), 10).get(0);
         Assertions.assertEquals(ranges(r(0, 10), r(300, 310), r(400, 410)), shards);
 
-        CommandStore commandStore = new CommandStore.Synchronized(0, ids.get(0), null, null, null);
+        CommandStore commandStore = new CommandStore.Synchronized(0, null, null, null, null, ignore -> null, null);
         commandStore.updateTopology(topology, shards.union(r(350, 360)), KeyRanges.EMPTY);
         commandStore.commandsForKey(key(355));
         commandStore.commandsForKey(key(356));

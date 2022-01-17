@@ -3,7 +3,6 @@ package accord.topology;
 import java.util.List;
 import java.util.Set;
 
-import accord.api.KeyRange;
 import accord.local.Node.Id;
 import accord.api.Key;
 import com.google.common.annotations.VisibleForTesting;
@@ -11,6 +10,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
+// TODO: concept of region/locality
 public class Shard
 {
     public final KeyRange range;
@@ -18,6 +18,7 @@ public class Shard
     public final List<Id> nodes;
     public final Set<Id> nodeSet;
     public final Set<Id> fastPathElectorate;
+    public final int maxFailures;
     public final int recoveryFastPathSize;
     public final int fastPathQuorumSize;
     public final int slowPathQuorumSize;
@@ -27,12 +28,13 @@ public class Shard
         this.range = range;
         this.nodes = ImmutableList.copyOf(nodes);
         this.nodeSet = ImmutableSet.copyOf(nodes);
-        int f = maxToleratedFailures(nodes.size());
+        Preconditions.checkArgument(nodes.size() == nodeSet.size());
+        this.maxFailures = maxToleratedFailures(nodes.size());
         this.fastPathElectorate = ImmutableSet.copyOf(fastPathElectorate);
         int e = fastPathElectorate.size();
-        this.recoveryFastPathSize = (f+1)/2;
-        this.slowPathQuorumSize = f + 1;
-        this.fastPathQuorumSize = fastPathQuorumSize(nodes.size(), e, f);
+        this.recoveryFastPathSize = (maxFailures+1)/2;
+        this.slowPathQuorumSize = slowPathQuorumSize(nodes.size());
+        this.fastPathQuorumSize = fastPathQuorumSize(nodes.size(), e, maxFailures);
     }
 
     @VisibleForTesting
@@ -48,6 +50,11 @@ public class Shard
         return (f + electorate)/2 + 1;
     }
 
+    static int slowPathQuorumSize(int replicas)
+    {
+        return replicas - maxToleratedFailures(replicas);
+    }
+
     public int rf()
     {
         return nodes.size();
@@ -56,6 +63,30 @@ public class Shard
     public boolean contains(Key key)
     {
         return range.containsKey(key);
+    }
+
+    public String toString(boolean extendedInfo)
+    {
+        String s = "Shard[" + range.start() + ',' + range.end() + ']';
+
+        if (extendedInfo)
+        {
+            StringBuilder sb = new StringBuilder(s);
+            sb.append(":(");
+            for (int i=0, mi=nodes.size(); i<mi; i++)
+            {
+                if (i > 0)
+                    sb.append(", ");
+
+                Id node = nodes.get(i);
+                sb.append(node);
+                if (fastPathElectorate.contains(node))
+                    sb.append('f');
+            }
+            sb.append(')');
+            s = sb.toString();
+        }
+        return s;
     }
 
     @Override

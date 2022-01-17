@@ -10,5 +10,5 @@ import accord.txn.Timestamp;
  */
 public interface Write
 {
-    void apply(KeyRanges range, Timestamp executeAt, Store store);
+    void apply(KeyRanges range, Timestamp executeAt, DataStore store);
 }

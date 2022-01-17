@@ -14,6 +14,7 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import accord.coordinate.Timeout;
+import accord.impl.SimpleProgressLog;
 import accord.local.CommandStore;
 import accord.local.Node;
 import accord.local.Node.Id;
@@ -260,7 +261,7 @@ public class Cluster implements Scheduler
             Cluster sinks = new Cluster(queueSupplier, lookup::get, responseSink, stderr);
             for (Id node : nodes)
                 lookup.put(node, new Node(node, shards, sinks.create(node, randomSupplier.get()), randomSupplier.get(),
-                                          nowSupplier.get(), MaelstromStore::new, MaelstromAgent.INSTANCE, sinks, CommandStore.Factory.SINGLE_THREAD));
+                                          nowSupplier.get(), MaelstromStore::new, MaelstromAgent.INSTANCE, sinks, SimpleProgressLog::new, CommandStore.Factory.SINGLE_THREAD));
 
             List<Id> nodesList = new ArrayList<>(Arrays.asList(nodes));
             sinks.recurring(() ->

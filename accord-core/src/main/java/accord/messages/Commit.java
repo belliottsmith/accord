@@ -1,8 +1,8 @@
 package accord.messages;
 
+import accord.api.Key;
 import accord.local.Node;
 import accord.local.Node.Id;
-import accord.messages.Request;
 import accord.txn.Timestamp;
 import accord.txn.Dependencies;
 import accord.txn.Txn;
@@ -15,9 +15,9 @@ public class Commit extends ReadData implements Request
     final Dependencies deps;
     final boolean read;
 
-    public Commit(TxnId txnId, Txn txn, Timestamp executeAt, Dependencies deps, boolean read)
+    public Commit(TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, boolean read)
     {
-        super(txnId, txn);
+        super(txnId, txn, homeKey);
         this.executeAt = executeAt;
         this.deps = deps;
         this.read = read;
@@ -25,7 +25,7 @@ public class Commit extends ReadData implements Request
 
     public void process(Node node, Id from, long messageId)
     {
-        txn.local(node).forEach(instance -> instance.command(txnId).commit(txn, deps, executeAt));
+        txn.local(node).forEach(instance -> instance.command(txnId).commit(txn, homeKey, deps, executeAt));
         if (read) super.process(node, from, messageId);
     }
 

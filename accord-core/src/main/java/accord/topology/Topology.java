@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
-import accord.api.KeyRange;
 import accord.local.Node.Id;
 import accord.api.Key;
 import accord.txn.Keys;
@@ -82,6 +81,7 @@ public class Topology extends AbstractCollection<Shard>
         return Shards.select(shards, info.supersetIndexes);
     }
 
+    // TODO: optimised HomeKey concept containing the Key, Shard and Topology to avoid lookups when topology hasn't changed
     public Shard forKey(Key key)
     {
         int i = ranges.rangeIndexForKey(key);

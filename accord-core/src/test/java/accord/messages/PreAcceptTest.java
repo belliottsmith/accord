@@ -1,5 +1,6 @@
 package accord.messages;
 
+import accord.impl.SimpleProgressLog;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.MessageSink;
@@ -42,7 +43,7 @@ public class PreAcceptTest
         MockStore store = new MockStore();
         Scheduler scheduler = new ThreadPoolScheduler();
         return new Node(nodeId, TOPOLOGY, messageSink, random, clock, () -> store,
-                        new TestAgent(), scheduler, CommandStore.Factory.SINGLE_THREAD);
+                        new TestAgent(), scheduler, SimpleProgressLog::new, CommandStore.Factory.SINGLE_THREAD);
     }
 
     @Test
@@ -60,7 +61,7 @@ public class PreAcceptTest
 
             TxnId txnId = clock.idForNode(ID2);
             Txn txn = writeTxn(Keys.of(key));
-            PreAccept preAccept = new PreAccept(txnId, txn);
+            PreAccept preAccept = new PreAccept(txnId, txn, key);
             clock.increment(10);
             preAccept.process(node, ID2, 0);
 
@@ -92,7 +93,7 @@ public class PreAcceptTest
 
             TxnId txnId = clock.idForNode(ID2);
             Txn txn = writeTxn(Keys.of(key));
-            PreAccept preAccept = new PreAccept(txnId, txn);
+            PreAccept preAccept = new PreAccept(txnId, txn, key);
             preAccept.process(node, ID2, 0);
         }
         finally
@@ -116,13 +117,13 @@ public class PreAcceptTest
         {
 
             IntKey key1 = IntKey.key(10);
-            PreAccept preAccept1 = new PreAccept(clock.idForNode(ID2), writeTxn(Keys.of(key1)));
+            PreAccept preAccept1 = new PreAccept(clock.idForNode(ID2), writeTxn(Keys.of(key1)), key1);
             preAccept1.process(node, ID2, 0);
 
             messageSink.clearHistory();
             IntKey key2 = IntKey.key(11);
             TxnId txnId2 = new TxnId(50, 0, ID3);
-            PreAccept preAccept2 = new PreAccept(txnId2, writeTxn(Keys.of(key1, key2)));
+            PreAccept preAccept2 = new PreAccept(txnId2, writeTxn(Keys.of(key1, key2)), key2);
             clock.increment(10);
             preAccept2.process(node, ID3, 0);
 

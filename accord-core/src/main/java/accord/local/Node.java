@@ -5,23 +5,33 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+
+import javax.annotation.Nullable;
+
+import com.google.common.annotations.VisibleForTesting;
 
 import accord.api.Agent;
 import accord.api.Key;
 import accord.api.MessageSink;
 import accord.api.Result;
+import accord.api.ProgressLog;
 import accord.api.Scheduler;
-import accord.api.Store;
+import accord.api.DataStore;
 import accord.coordinate.Coordinate;
+import accord.local.CommandStore.Factory;
 import accord.messages.Callback;
 import accord.messages.Request;
 import accord.messages.Reply;
+import accord.topology.KeyRange;
+import accord.topology.KeyRanges;
 import accord.topology.Shard;
 import accord.topology.Shards;
 import accord.topology.Topology;
+import accord.txn.Ballot;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
@@ -70,6 +80,11 @@ public class Node
         }
     }
 
+    public boolean isCoordinating(TxnId txnId, Ballot promised)
+    {
+        return promised.node.equals(id) && coordinating.containsKey(txnId);
+    }
+
     public static int numCommandShards()
     {
         return 8; // TODO: make configurable
@@ -89,10 +104,9 @@ public class Node
     private final Scheduler scheduler;
 
     private final Map<TxnId, CompletionStage<Result>> coordinating = new ConcurrentHashMap<>();
-    private final Set<TxnId> pendingRecovery = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public Node(Id id, Topology cluster, MessageSink messageSink, Random random, LongSupplier nowSupplier,
-                Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler, CommandStore.Factory commandStoreFactory)
+                Supplier<DataStore> dataSupplier, Agent agent, Scheduler scheduler, Function<? super Node, Function<? super CommandStore, ? extends ProgressLog>> retryLogFactory, Factory commandStoreFactory)
     {
         this.id = id;
         this.cluster = cluster;
@@ -102,7 +116,7 @@ public class Node
         this.messageSink = messageSink;
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        this.commandStores = new CommandStores(numCommandShards(), id, this::uniqueNow, agent, dataSupplier.get(), commandStoreFactory);
+        this.commandStores = new CommandStores(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), scheduler, retryLogFactory.apply(this), commandStoreFactory);
         this.commandStores.updateTopology(cluster.forNode(id));
     }
 
@@ -226,40 +240,55 @@ public class Node
         messageSink.reply(replyingToNode, replyingToMessage, send);
     }
 
+    @VisibleForTesting
+    public @Nullable Key trySelectHomeKey(Keys keys)
+    {
+        int i = commandStores.topology().ranges().findFirstIntersecting(keys);
+        return i >= 0 ? keys.get(i) : null;
+    }
+
+    public Key selectHomeKey(Keys keys)
+    {
+        Key key = trySelectHomeKey(keys);
+        return key != null ? key : selectRandomHomeKey();
+    }
+
+    public Key selectRandomHomeKey()
+    {
+        KeyRanges ranges = commandStores.topology().ranges();
+        KeyRange range = ranges.get(ranges.size() == 1 ? 0 : random.nextInt(ranges.size()));
+        return range.endInclusive() ? range.end() : range.start();
+    }
+
     public CompletionStage<Result> coordinate(Txn txn)
     {
         TxnId txnId = new TxnId(uniqueNow());
-        CompletionStage<Result> result = Coordinate.execute(this, txnId, txn);
+        Key homeKey = trySelectHomeKey(txn.keys);
+        if (homeKey == null)
+        {
+            homeKey = selectRandomHomeKey();
+            txn = new Txn(txn.keys.with(homeKey), txn.read, txn.query, txn.update);
+        }
+        CompletionStage<Result> result = Coordinate.execute(this, txnId, txn, homeKey);
         coordinating.put(txnId, result);
-        result.handle((success, fail) ->
-                      {
-                          coordinating.remove(txnId);
-                          // if we don't succeed, try again in 30s to make sure somebody finishes it
-                          // TODO: this is an ugly liveness mechanism
-                          if (fail != null && pendingRecovery.add(txnId))
-                              scheduler.once(() -> { pendingRecovery.remove(txnId); recover(txnId, txn); } , 30L, TimeUnit.SECONDS);
-                          return null;
-                      });
+        // TODO (now): if we fail, nominate another node to try instead
+        result.whenComplete((success, fail) -> coordinating.remove(txnId));
         return result;
     }
 
     // TODO: encapsulate in Coordinate, so we can request that e.g. commits be re-sent?
-    public CompletionStage<Result> recover(TxnId txnId, Txn txn)
+    public CompletionStage<Result> recover(TxnId txnId, Txn txn, Key homeKey)
     {
         CompletionStage<Result> result = coordinating.get(txnId);
         if (result != null)
             return result;
 
-        result = Coordinate.recover(this, txnId, txn);
+        result = Coordinate.recover(this, txnId, txn, homeKey);
         coordinating.putIfAbsent(txnId, result);
-        result.handle((success, fail) -> {
+        result.whenComplete((success, fail) -> {
             coordinating.remove(txnId);
             agent.onRecover(this, success, fail);
-            // if we don't succeed, try again in 30s to make sure somebody finishes it
-            // TODO: this is an ugly liveness mechanism
-            if (fail != null && pendingRecovery.add(txnId))
-                scheduler.once(() -> { pendingRecovery.remove(txnId); recover(txnId, txn); } , 30L, TimeUnit.SECONDS);
-            return null;
+            // TODO (now): if we fail, nominate another node to try instead
         });
         return result;
     }
@@ -267,6 +296,11 @@ public class Node
     public void receive(Request request, Id from, long messageId)
     {
         scheduler.now(() -> request.process(this, from, messageId));
+    }
+
+    public boolean isReplicaOf(Key key)
+    {
+        return commandStores.topology().ranges().contains(key);
     }
 
     public Scheduler scheduler()

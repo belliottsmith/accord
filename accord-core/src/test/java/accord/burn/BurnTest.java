@@ -234,6 +234,7 @@ public class BurnTest
         while (true)
         {
             long seed = ThreadLocalRandom.current().nextLong();
+//            long seed = 938777211316984965L;
             System.out.println("Seed " + seed);
             Random random = new Random(seed);
             List<Id> clients =  generateIds(true, 1 + random.nextInt(4));

@@ -1,7 +1,6 @@
 package accord.topology;
 
 import accord.api.Key;
-import accord.api.KeyRange;
 import accord.txn.Keys;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
@@ -64,6 +63,11 @@ public class KeyRanges implements Iterable<KeyRange>
         return rangeIndexForKey(0, ranges.length, key);
     }
 
+    public boolean contains(Key key)
+    {
+        return rangeIndexForKey(key) >= 0;
+    }
+
     public int size()
     {
         return ranges.length;
@@ -93,6 +97,17 @@ public class KeyRanges implements Iterable<KeyRange>
             if (ranges[i].intersects(keys))
                 return true;
         return false;
+    }
+
+    public int findFirstIntersecting(Keys keys)
+    {
+        for (int i=0; i<ranges.length; i++)
+        {
+            int lowKeyIndex = ranges[i].lowKeyIndex(keys);
+            if (lowKeyIndex >= 0)
+                return lowKeyIndex;
+        }
+        return -1;
     }
 
     /**
