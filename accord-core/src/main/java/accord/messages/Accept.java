@@ -1,6 +1,7 @@
 package accord.messages;
 
 import accord.topology.Topologies;
+import accord.api.Key;
 import accord.txn.Ballot;
 import accord.local.Node;
 import accord.txn.Timestamp;
@@ -16,29 +17,31 @@ public class Accept extends TxnRequest
     public final Ballot ballot;
     public final TxnId txnId;
     public final Txn txn;
+    public final Key homeKey;
     public final Timestamp executeAt;
     public final Dependencies deps;
 
-    public Accept(Scope scope, Ballot ballot, TxnId txnId, Txn txn, Timestamp executeAt, Dependencies deps)
+    public Accept(Scope scope, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
         super(scope);
         this.ballot = ballot;
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
         this.executeAt = executeAt;
         this.deps = deps;
     }
 
-    public Accept(Node.Id dst, Topologies topologies, Ballot ballot, TxnId txnId, Txn txn, Timestamp executeAt, Dependencies deps)
+    public Accept(Node.Id dst, Topologies topologies, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
-        this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, executeAt, deps);
+        this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, homeKey, executeAt, deps);
     }
 
     public void process(Node on, Node.Id replyToNode, ReplyContext replyContext)
     {
         on.reply(replyToNode, replyContext, on.mapReduceLocal(scope(), instance -> {
             Command command = instance.command(txnId);
-            if (!command.accept(ballot, txn, executeAt, deps))
+            if (!command.accept(ballot, txn, homeKey, executeAt, deps))
                 return new AcceptNack(txnId, command.promised());
             return new AcceptOk(txnId, calculateDeps(instance, txnId, txn, executeAt));
         }, (r1, r2) -> {

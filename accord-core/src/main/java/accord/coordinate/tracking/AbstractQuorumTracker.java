@@ -30,7 +30,7 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
             return true;
         }
 
-        boolean onFailure(Node.Id id)
+        public boolean onFailure(Node.Id id)
         {
             if (!inflight.remove(id))
                 return false;
@@ -38,7 +38,7 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
             return true;
         }
 
-        boolean hasFailed()
+        public boolean hasFailed()
         {
             return failures > shard.maxFailures;
         }
@@ -48,7 +48,7 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
             return success >= shard.slowPathQuorumSize;
         }
 
-        boolean hasInFlight()
+        public boolean hasInFlight()
         {
             return !inflight.isEmpty();
         }
@@ -60,9 +60,9 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
     }
 
     // TODO: refactor to return true if this call caused the state change to failed
-    public void recordFailure(Node.Id node)
+    public boolean recordFailure(Node.Id node)
     {
-        forEachTrackerForNode(node, QuorumShardTracker::onFailure);
+        return matchingTrackersForNode(node, QuorumShardTracker::onFailure) > 0;
     }
 
     public boolean hasReachedQuorum()

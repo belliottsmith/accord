@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import accord.api.Key;
 import accord.coordinate.tracking.FastPathTracker;
 import accord.coordinate.tracking.QuorumTracker;
 import accord.topology.Shard;
@@ -29,10 +30,9 @@ import org.apache.cassandra.utils.concurrent.Promise;
 import static accord.local.Status.Accepted;
 
 // TODO: rename to Recover (verb); rename Recover message to not clash
-class Recover extends AcceptPhase implements Callback<RecoverReply>
+class Recover extends Propose implements Callback<RecoverReply>
 {
-    private static final Object SENTINEL = new Object();
-    static class AwaitCommit extends AsyncPromise<Object> implements Callback<WaitOnCommitOk>
+    class AwaitCommit extends AsyncPromise<Object> implements Callback<WaitOnCommitOk>
     {
         final QuorumTracker tracker;
 
@@ -49,8 +49,14 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
             if (isDone()) return;
 
             tracker.recordSuccess(from);
-            if(tracker.hasReachedQuorum())
-                setSuccess(SENTINEL);
+
+            if (tracker.hasReachedQuorum())
+            {
+                new Recover(node, ballot, txnId, txn, homeKey, tracker.topologies()).addCallback((success, failure) -> {
+                    if (success != null) trySuccess(success);
+                    else tryFailure(failure);
+                });
+            }
         }
 
         @Override
@@ -64,7 +70,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
         }
     }
 
-    static Future<Object> awaitCommits(Node node, Dependencies waitOn)
+    Future<Object> awaitCommits(Node node, Dependencies waitOn)
     {
         AtomicInteger remaining = new AtomicInteger(waitOn.size());
         Promise<Object> future = new AsyncPromise<>();
@@ -74,7 +80,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
                 if (future.isDone())
                     return;
                 if (success != null && remaining.decrementAndGet() == 0)
-                    future.setSuccess(SENTINEL);
+                    future.setSuccess(success);
                 else
                     future.tryFailure(failure);
             });
@@ -112,16 +118,16 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
     final List<RecoverOk> recoverOks = new ArrayList<>();
     final FastPathTracker<ShardTracker> tracker;
 
-    public Recover(Node node, Ballot ballot, TxnId txnId, Txn txn)
+    public Recover(Node node, Ballot ballot, TxnId txnId, Txn txn, Key homeKey)
     {
-        this(node, ballot, txnId, txn, node.topology().forEpoch(txn, txnId.epoch));
+        this(node, ballot, txnId, txn, homeKey, node.topology().forEpoch(txn, txnId.epoch));
     }
 
-    private Recover(Node node, Ballot ballot, TxnId txnId, Txn txn, Topologies topologies)
+    private Recover(Node node, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Topologies topologies)
     {
-        super(node, ballot, txnId, txn);
+        super(node, ballot, txnId, txn, homeKey);
         this.tracker = new FastPathTracker<>(topologies, ShardTracker[]::new, ShardTracker::new);
-        node.send(tracker.nodes(), to -> new BeginRecovery(to, topologies, txnId, txn, ballot), this);
+        node.send(tracker.nodes(), to -> new BeginRecovery(to, topologies, txnId, txn, homeKey, ballot), this);
     }
 
     @Override
@@ -161,7 +167,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         if (acceptOrCommit != null)
         {
-            long minEpoch = Timestamp.min(txnId, acceptOrCommit.executeAt).epoch;
+            long minEpoch = txnId.epoch;
             switch (acceptOrCommit.status)
             {
                 case Accepted:
@@ -171,7 +177,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
                 case ReadyToExecute:
                 case Executed:
                 case Applied:
-                    setSuccess(new Agreed(txnId, txn, acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch), acceptOrCommit.writes, acceptOrCommit.result));
+                    setSuccess(new Agreed(txnId, txn, homeKey, acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch), acceptOrCommit.writes, acceptOrCommit.result));
                     return;
             }
         }
@@ -215,7 +221,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
     private void retry()
     {
-        new Recover(node, ballot, txnId, txn, node.topology().forEpoch(txn, txnId.epoch)).addCallback((success, failure) -> {
+        new Recover(node, ballot, txnId, txn, homeKey, node.topology().forEpoch(txn, txnId.epoch)).addCallback((success, failure) -> {
             if (success != null) setSuccess(success);
             else tryFailure(failure);
         });

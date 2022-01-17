@@ -3,11 +3,15 @@ package accord.messages;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
+import accord.api.Key;
 import accord.local.CommandStore;
+import accord.local.CommandsForKey;
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.topology.Topologies;
+import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.local.Command;
 import accord.txn.Dependencies;
@@ -18,17 +22,19 @@ public class PreAccept extends TxnRequest
 {
     public final TxnId txnId;
     public final Txn txn;
+    public final Key homeKey;
 
-    public PreAccept(Scope scope, TxnId txnId, Txn txn)
+    public PreAccept(Scope scope, TxnId txnId, Txn txn, Key homeKey)
     {
         super(scope);
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
     }
 
-    public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn)
+    public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn);
+        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey);
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)
@@ -38,7 +44,7 @@ public class PreAccept extends TxnRequest
             //       we PreAccept to both old and new topologies and require quorums in both.
             //       This necessitates sending to ALL replicas of old topology, not only electorate (as fast path may be unreachable).
             Command command = instance.command(txnId);
-            if (!command.witness(txn))
+            if (!command.preaccept(txn, homeKey))
                 return PreAcceptNack.INSTANCE;
             return new PreAcceptOk(txnId, command.executeAt(), calculateDeps(instance, txnId, txn, txnId));
         }, (r1, r2) -> {
@@ -108,9 +114,9 @@ public class PreAccept extends TxnRequest
         public String toString()
         {
             return "PreAcceptOk{" +
-                    "txnId=" + txnId +
-                    ", witnessedAt=" + witnessedAt +
-                    ", deps=" + deps +
+                    "txnId:" + txnId +
+                    ", witnessedAt:" + witnessedAt +
+                    ", deps:" + deps +
                     '}';
         }
     }
@@ -137,7 +143,7 @@ public class PreAccept extends TxnRequest
     static Dependencies calculateDeps(CommandStore commandStore, TxnId txnId, Txn txn, Timestamp executeAt)
     {
         NavigableMap<TxnId, Txn> deps = new TreeMap<>();
-        txn.conflictsMayExecuteBefore(commandStore, executeAt).forEach(conflict -> {
+        conflictsMayExecuteBefore(commandStore, executeAt, txn.keys).forEach(conflict -> {
             if (conflict.txnId().equals(txnId))
                 return;
 
@@ -151,8 +157,22 @@ public class PreAccept extends TxnRequest
     public String toString()
     {
         return "PreAccept{" +
-               "txnId: " + txnId +
-               ", txn: " + txn +
+               "txnId:" + txnId +
+               ", txn:" + txn +
+               ", homeKey:" + homeKey +
                '}';
     }
+
+    private static Stream<Command> conflictsMayExecuteBefore(CommandStore commandStore, Timestamp mayExecuteBefore, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return Stream.concat(
+            forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
+            // TODO: only return latest of Committed?
+            forKey.committedByExecuteAt.headMap(mayExecuteBefore, false).values().stream()
+            );
+        });
+    }
+
 }

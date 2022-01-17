@@ -5,7 +5,12 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import accord.api.Key;
+<<<<<<< HEAD
 import accord.api.Store;
+=======
+import accord.topology.KeyRange;
+import accord.api.DataStore;
+>>>>>>> 9e2cbf0 (first draft)
 import accord.api.Write;
 import accord.txn.Timestamp;
 import accord.utils.Timestamped;
@@ -16,7 +21,11 @@ public class ListWrite extends TreeMap<Key, int[]> implements Write
 {
     private static final Logger logger = LoggerFactory.getLogger(ListWrite.class);
     @Override
+<<<<<<< HEAD
     public void apply(Key key, Timestamp executeAt, Store store)
+=======
+    public void apply(KeyRanges ranges, Timestamp executeAt, DataStore store)
+>>>>>>> 9e2cbf0 (first draft)
     {
         ListStore s = (ListStore) store;
         if (!containsKey(key))

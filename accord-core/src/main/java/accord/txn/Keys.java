@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import accord.api.Key;
-import accord.api.KeyRange;
+import accord.topology.KeyRange;
 import accord.topology.KeyRanges;
 
 @SuppressWarnings("rawtypes")
@@ -135,6 +135,21 @@ public class Keys implements Iterable<Key>
     public int ceilIndex(Key key)
     {
         return ceilIndex(0, keys.length, key);
+    }
+
+    public Keys with(Key key)
+    {
+        int insertPos = Arrays.binarySearch(keys, key);
+        if (insertPos >= 0)
+            return this;
+        insertPos = -1 - insertPos;
+
+        Key[] src = keys;
+        Key[] trg = new Key[src.length + 1];
+        System.arraycopy(src, 0, trg, 0, insertPos);
+        trg[insertPos] = key;
+        System.arraycopy(src, insertPos, trg, insertPos + 1, src.length - insertPos);
+        return new Keys(trg);
     }
 
     public Stream<Key> stream()

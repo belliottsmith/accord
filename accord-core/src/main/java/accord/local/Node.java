@@ -2,7 +2,6 @@ package accord.local;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -16,13 +15,26 @@ import com.google.common.annotations.VisibleForTesting;
 import accord.api.*;
 import accord.coordinate.Coordinate;
 import accord.messages.*;
+
+import javax.annotation.Nullable;
+
+import accord.api.Agent;
+import accord.api.Key;
+import accord.api.MessageSink;
+import accord.api.Result;
+import accord.api.ProgressLog;
+import accord.api.Scheduler;
+import accord.api.DataStore;
 import accord.messages.Callback;
 import accord.messages.ReplyContext;
 import accord.messages.Request;
 import accord.messages.Reply;
+import accord.topology.KeyRange;
+import accord.topology.KeyRanges;
 import accord.topology.Shard;
 import accord.topology.Topology;
 import accord.topology.TopologyManager;
+import accord.txn.Ballot;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
@@ -72,6 +84,11 @@ public class Node implements ConfigurationService.Listener
         }
     }
 
+    public boolean isCoordinating(TxnId txnId, Ballot promised)
+    {
+        return promised.node.equals(id) && coordinating.containsKey(txnId);
+    }
+
     public static int numCommandShards()
     {
         return 8; // TODO: make configurable
@@ -94,7 +111,8 @@ public class Node implements ConfigurationService.Listener
     private final Set<TxnId> pendingRecovery = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public Node(Id id, MessageSink messageSink, ConfigurationService configService, LongSupplier nowSupplier,
-                Supplier<Store> dataSupplier, Agent agent, Scheduler scheduler, CommandStores.Factory factory)
+                Supplier<DataStore> dataSupplier, Agent agent, Scheduler scheduler,
+                Function<Node, ProgressLog.Factory> progressLogFactory, CommandStores.Factory factory)
     {
         this.id = id;
         this.agent = agent;
@@ -105,7 +123,7 @@ public class Node implements ConfigurationService.Listener
         this.now = new AtomicReference<>(new Timestamp(topology.epoch(), nowSupplier.getAsLong(), 0, id));
         this.nowSupplier = nowSupplier;
         this.scheduler = scheduler;
-        this.commandStores = factory.create(numCommandShards(), id, this::uniqueNow, agent, dataSupplier.get());
+        this.commandStores = factory.create(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), scheduler, progressLogFactory.apply(this));
 
         configService.registerListener(this);
         onTopologyUpdate(topology, false);
@@ -212,6 +230,11 @@ public class Node implements ConfigurationService.Listener
         return commandStores.mapReduce(scope, map, reduce);
     }
 
+    public <T> T ifLocal(Key key, Function<CommandStore, T> ifLocal)
+    {
+        return commandStores.mapReduce(key, ifLocal, (a, b) -> { throw new IllegalStateException();} );
+    }
+
     public <T extends Collection<CommandStore>> T collectLocal(Keys keys, IntFunction<T> factory)
     {
         return commandStores.collect(keys, factory);
@@ -232,6 +255,11 @@ public class Node implements ConfigurationService.Listener
     public void send(Shard shard, Request send)
     {
         shard.nodes.forEach(node -> messageSink.send(node, send));
+    }
+
+    public void send(Shard shard, Request send, Callback callback)
+    {
+        shard.nodes.forEach(node -> messageSink.send(node, send, callback));
     }
 
     private <T> void send(Shard shard, Request send, Set<Id> alreadyContacted)
@@ -297,17 +325,16 @@ public class Node implements ConfigurationService.Listener
             return topology().awaitEpoch(txnId.epoch).flatMap(v -> coordinate(txnId, txn));
         }
 
-        Future<Result> result = Coordinate.execute(this, txnId, txn);
+        Key homeKey = trySelectHomeKey(txn.keys);
+        if (homeKey == null)
+        {
+            homeKey = selectRandomHomeKey();
+            txn = new Txn(txn.keys.with(homeKey), txn.read, txn.query, txn.update);
+        }
+        Future<Result> result = Coordinate.execute(this, txnId, txn, homeKey);
         coordinating.put(txnId, result);
-        // TODO (now): error handling
-        result.addCallback((success, fail) ->
-            {
-            coordinating.remove(txnId);
-            // if we don't succeed, try again in 30s to make sure somebody finishes it
-            // TODO: this is an ugly liveness mechanism
-            if (fail != null && pendingRecovery.add(txnId))
-            scheduler.once(() -> { pendingRecovery.remove(txnId); recover(txnId, txn); } , 30L, TimeUnit.SECONDS);
-            });
+        // TODO (now): if we fail, nominate another node to try instead
+        result.addCallback((success, fail) -> coordinating.remove(txnId));
         return result;
     }
 
@@ -316,31 +343,48 @@ public class Node implements ConfigurationService.Listener
         return coordinate(nextTxnId(), txn);
     }
 
+    @VisibleForTesting
+    public @Nullable Key trySelectHomeKey(Keys keys)
+    {
+        int i = topology().current().ranges().findFirstIntersecting(keys);
+        return i >= 0 ? keys.get(i) : null;
+    }
+
+    public Key selectHomeKey(Keys keys)
+    {
+        Key key = trySelectHomeKey(keys);
+        return key != null ? key : selectRandomHomeKey();
+    }
+
+    public Key selectRandomHomeKey()
+    {
+        KeyRanges ranges = topology().current().ranges();
+        KeyRange range = ranges.get(ranges.size() == 1 ? 0 : random.nextInt(ranges.size()));
+        return range.endInclusive() ? range.end() : range.start();
+    }
+
     // TODO: encapsulate in Coordinate, so we can request that e.g. commits be re-sent?
-    public void recover(TxnId txnId, Txn txn)
+    public Future<Result> recover(TxnId txnId, Txn txn, Key homeKey)
     {
         if (txnId.epoch > topology.epoch())
         {
             configService.fetchTopologyForEpoch(txnId.epoch);
-            topology().awaitEpoch(txnId.epoch).addListener(() -> recover(txnId, txn));
+            topology().awaitEpoch(txnId.epoch).addListener(() -> recover(txnId, txn, homeKey));
             return;
         }
 
         Future<Result> result = coordinating.get(txnId);
         if (result != null)
-            return;
+            return result;
 
-        result = Coordinate.recover(this, txnId, txn);
+        result = Coordinate.recover(this, txnId, txn, homeKey);
         coordinating.putIfAbsent(txnId, result);
-        // TODO (now): error handling
         result.addCallback((success, fail) -> {
-                coordinating.remove(txnId);
-                agent.onRecover(this, success, fail);
-                // if we don't succeed, try again in 30s to make sure somebody finishes it
-                // TODO: this is an ugly liveness mechanism
-                if (fail != null && pendingRecovery.add(txnId))
-                    scheduler.once(() -> { pendingRecovery.remove(txnId); recover(txnId, txn); } , 30L, TimeUnit.SECONDS);
+            coordinating.remove(txnId);
+            agent.onRecover(this, success, fail);
+            // TODO (now): if we fail, nominate another node to try instead
         });
+        return result;
     }
 
     public void receive(Request request, Id from, ReplyContext replyContext)
@@ -353,6 +397,11 @@ public class Node implements ConfigurationService.Listener
             return;
         }
         scheduler.now(() -> request.process(this, from, replyContext));
+    }
+
+    public boolean isReplicaOf(Key key)
+    {
+        return commandStores.topology().ranges().contains(key);
     }
 
     public Scheduler scheduler()

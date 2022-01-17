@@ -4,11 +4,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import accord.api.Key;
+<<<<<<< HEAD
 import accord.api.Store;
 import accord.local.Node;
+=======
+import accord.api.DataStore;
+>>>>>>> 9e2cbf0 (first draft)
 import accord.utils.Timestamped;
 
-public class ListStore implements Store
+public class ListStore implements DataStore
 {
     static final int[] EMPTY = new int[0];
     final Map<Key, Timestamped<int[]>> data = new ConcurrentHashMap<>();

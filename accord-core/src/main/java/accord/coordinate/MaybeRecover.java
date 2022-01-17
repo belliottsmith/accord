@@ -1,0 +1,125 @@
+package accord.coordinate;
+
+import java.util.concurrent.CompletionStage;
+import java.util.function.BiConsumer;
+
+import com.google.common.base.Preconditions;
+
+import accord.api.Key;
+import accord.local.Node;
+import accord.local.Status;
+import accord.messages.CheckStatus.CheckStatusOk;
+import accord.messages.CheckStatus.CheckStatusOkFull;
+import accord.messages.CheckStatus.IncludeInfo;
+import accord.topology.Shard;
+import accord.txn.Ballot;
+import accord.txn.Txn;
+import accord.txn.TxnId;
+
+import static accord.local.Status.Accepted;
+
+/**
+ * A result of null indicates the transaction is globally persistent
+ * A result of CheckStatusOk indicates the maximum status found for the transaction, which may be used to assess progress
+ */
+public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object, Throwable>
+{
+    final Status knownStatus;
+    final Ballot knownPromised;
+    final boolean knownPromisedHasBeenAccepted;
+
+    MaybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
+    {
+        super(node, txnId, txn, homeKey, homeShard, includeInfo);
+        this.knownStatus = knownStatus;
+        this.knownPromised = knownPromised;
+        this.knownPromisedHasBeenAccepted = knownPromiseHasBeenAccepted;
+    }
+
+    @Override
+    public void accept(Object unused, Throwable fail)
+    {
+        if (fail != null) completeExceptionally(fail);
+        else complete(null);
+    }
+
+    @Override
+    boolean hasMetSuccessCriteria()
+    {
+        return tracker.hasReachedQuorum() || hasMadeProgress();
+    }
+
+    public boolean hasMadeProgress()
+    {
+        return max != null && (max.isCoordinating
+                               || max.status.compareTo(knownStatus) > 0
+                               || max.promised.compareTo(knownPromised) > 0
+                               || (!knownPromisedHasBeenAccepted && knownStatus == Accepted && max.accepted.equals(knownPromised)));
+    }
+
+    // TODO (now): invoke from {node} so we may have mutual exclusion with other attempts to recover or coordinate
+    public static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard,
+                                                              Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted)
+    {
+        return maybeRecover(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, (byte)0);
+    }
+
+    private static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard,
+                                                               Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
+    {
+        Preconditions.checkArgument(node.isReplicaOf(homeKey));
+        MaybeRecover maybeRecover = new MaybeRecover(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
+        maybeRecover.start();
+        return maybeRecover;
+    }
+
+    void onSuccessCriteriaOrExhaustion()
+    {
+        switch (max.status)
+        {
+            default: throw new AssertionError();
+            case NotWitnessed:
+            case PreAccepted:
+            case Accepted:
+            case Committed:
+            case ReadyToExecute:
+                if (hasMadeProgress())
+                {
+                    complete(max);
+                }
+                else
+                {
+                    node.recover(txnId, txn, key)
+                        .addCallback(this);
+                }
+                break;
+
+            case Executed:
+            case Applied:
+                if (max.hasExecutedOnAllShards)
+                {
+                    // TODO: persist this knowledge locally?
+                    complete(null);
+                }
+                else if (max instanceof CheckStatusOkFull)
+                {
+                    CheckStatusOkFull full = (CheckStatusOkFull) max;
+                    // TODO (now): consider topology choice here
+                    Persist.persist(node, node.topology().forKeys(txn.keys), txnId, key, txn, full.executeAt, full.deps, full.writes, full.result)
+                           .addCallback(this);
+                }
+                else
+                {
+                    maybeRecover(node, txnId, txn, key, tracker.shard, max.status, max.promised, max.accepted.equals(max.promised), IncludeInfo.all())
+                    .whenComplete((success, fail) -> {
+                        if (fail != null) completeExceptionally(fail);
+                        else
+                        {
+                            assert success == null;
+                            complete(null);
+                        }
+                    });
+                }
+        }
+    }
+}

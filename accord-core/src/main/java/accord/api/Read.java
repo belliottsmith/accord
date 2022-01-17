@@ -9,5 +9,5 @@ import accord.txn.Timestamp;
  */
 public interface Read
 {
-    Data read(Key key, Timestamp executeAt, Store store);
+    Data read(Key key, Timestamp executeAt, DataStore store);
 }

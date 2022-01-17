@@ -3,6 +3,7 @@ package accord.coordinate;
 import java.util.Set;
 
 import accord.api.Data;
+import accord.api.Key;
 import accord.coordinate.tracking.ReadTracker;
 import accord.api.Result;
 import accord.messages.Callback;
@@ -11,7 +12,7 @@ import accord.topology.Topologies;
 import accord.txn.*;
 import accord.messages.Apply;
 import accord.messages.ReadData.ReadReply;
-import accord.messages.ReadData.ReadWaiting;
+import accord.txn.Dependencies;
 import accord.local.Node.Id;
 import accord.messages.Commit;
 import accord.messages.ReadData;
@@ -24,6 +25,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
     final Node node;
     final TxnId txnId;
     final Txn txn;
+    final Key homeKey;
     final Timestamp executeAt;
     final Topologies topologies;
     final Keys keys;
@@ -36,6 +38,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         this.node = node;
         this.txnId = agreed.txnId;
         this.txn = agreed.txn;
+        this.homeKey = agreed.homeKey;
         this.keys = txn.keys();
         this.deps = agreed.deps;
         this.executeAt = agreed.executeAt;
@@ -45,9 +48,8 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         // TODO: perhaps compose these different behaviours differently?
         if (agreed.applied != null)
         {
-            node.send(topologies.nodes(),
-                      to -> new Apply(to, topologies, txnId, txn, executeAt, agreed.deps, agreed.applied, agreed.result));
             setSuccess(agreed.result);
+            Persist.persist(node, topologies, txnId, homeKey, txn, executeAt, deps, agreed.applied, agreed.result);
         }
         else
         {
@@ -55,7 +57,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
             for (Node.Id to : readTracker.nodes())
             {
                 boolean read = readSet.contains(to);
-                Commit send = new Commit(to, topologies, txnId, txn, executeAt, agreed.deps, read);
+                Commit send = new Commit(to, topologies, txnId, txn, homeKey, executeAt, agreed.deps, read);
                 if (read)
                 {
                     node.send(to, send, this);
@@ -64,7 +66,6 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
                 {
                     node.send(to, send);
                 }
-
             }
         }
     }
@@ -76,13 +77,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
             return;
 
         if (!reply.isFinal())
-        {
-            ReadWaiting waiting = (ReadWaiting) reply;
-            // TODO first see if we can collect newer information (from ourselves or others), and if so send it
-            //  otherwise, try to complete the transaction
-            node.recover(waiting.txnId, waiting.txn);
             return;
-        }
 
         if (!reply.isOK())
         {
@@ -98,9 +93,8 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         if (readTracker.hasCompletedRead())
         {
             Result result = txn.result(data);
-            Writes writes = txn.execute(executeAt, data);
-            node.send(topologies.nodes(), to -> new Apply(to, topologies, txnId, txn, executeAt, deps, writes, result));
             setSuccess(result);
+            Persist.persist(node, topologies, txnId, homeKey, txn, executeAt, deps, txn.execute(executeAt, data), result);
         }
     }
 
@@ -112,11 +106,13 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         if (!(throwable instanceof Timeout))
             throwable.printStackTrace();
 
+        // TODO: introduce two tiers of timeout, one to trigger a retry, and another to mark the original as failed
+        // TODO: if we fail, nominate another coordinator from the homeKey shard to try
         readTracker.recordReadFailure(from);
         Set<Id> readFrom = readTracker.computeMinimalReadSetAndMarkInflight();
         if (readFrom != null)
         {
-            node.send(readFrom, to -> new ReadData(to, topologies, txnId, txn, executeAt), this);
+            node.send(readFrom, to -> new ReadData(to, topologies, txnId, txn, homeKey, executeAt), this);
         }
         else if (readTracker.hasFailed())
         {

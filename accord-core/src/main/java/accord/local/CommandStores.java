@@ -2,11 +2,11 @@ package accord.local;
 
 import accord.api.Agent;
 import accord.api.Key;
-import accord.api.Store;
-import accord.local.CommandStore.SingleThread;
+import accord.api.DataStore;
 import accord.local.CommandStores.StoreGroups.Fold;
-import accord.local.Node.Id;
 import accord.messages.TxnRequest;
+import accord.api.ProgressLog;
+import accord.api.Scheduler;
 import accord.topology.KeyRanges;
 import accord.topology.Topology;
 import accord.txn.Keys;
@@ -30,7 +30,13 @@ public abstract class CommandStores
 {
     public interface Factory
     {
-        CommandStores create(int num, Node.Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store);
+        CommandStores create(int num,
+                             Node node,
+                             Function<Timestamp, Timestamp> uniqueNow,
+                             Agent agent,
+                             DataStore store,
+                             Scheduler scheduler,
+                             ProgressLog.Factory progressLogFactory);
     }
 
     static class StoreGroup
@@ -53,6 +59,11 @@ public abstract class CommandStores
         long matches(Keys keys)
         {
             return keys.foldl(ranges, StoreGroup::addKeyIndex, stores.length, 0L, -1L);
+        }
+
+        long matches(Key key)
+        {
+            return 1L << ranges.rangeIndexForKey(key);
         }
 
         long matches(TxnRequest.Scope scope)
@@ -170,27 +181,32 @@ public abstract class CommandStores
         }
     }
 
-    private final Node.Id node;
+    private final Node node;
     private final Function<Timestamp, Timestamp> uniqueNow;
     private final Agent agent;
-    private final Store store;
+    private final DataStore store;
+    private final Scheduler scheduler;
+    private final ProgressLog.Factory progressLogFactory;
     private final CommandStore.Factory shardFactory;
     private final int numShards;
     protected volatile StoreGroups groups = new StoreGroups(new StoreGroup[0], Topology.EMPTY, Topology.EMPTY);
 
-    public CommandStores(int num, Node.Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store, CommandStore.Factory shardFactory)
+    public CommandStores(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store,
+                         Scheduler scheduler, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
     {
         this.node = node;
         this.numShards = num;
         this.uniqueNow = uniqueNow;
         this.agent = agent;
         this.store = store;
+        this.scheduler = scheduler;
+        this.progressLogFactory = progressLogFactory;
         this.shardFactory = shardFactory;
     }
 
     private CommandStore createCommandStore(int generation, int index, KeyRanges ranges)
     {
-        return shardFactory.create(generation, index, numShards, node, uniqueNow, agent, store, ranges, this::getLocalTopology);
+        return shardFactory.create(generation, index, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, this::getLocalTopology);
     }
 
     private Topology getLocalTopology()
@@ -228,6 +244,11 @@ public abstract class CommandStores
         return mapReduce(StoreGroup::matches, scope, map, reduce);
     }
 
+    public <T> T mapReduce(Key key, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    {
+        return mapReduce(StoreGroup::matches, key, map, reduce);
+    }
+
     public <T extends Collection<CommandStore>> T collect(Keys keys, IntFunction<T> factory)
     {
         return groups.foldl(StoreGroup::matches, keys, CommandStores::append, null, null, factory);
@@ -252,7 +273,7 @@ public abstract class CommandStores
         if (cluster.epoch() <= current.global.epoch())
             return;
 
-        Topology local = cluster.forNode(node);
+        Topology local = cluster.forNode(node.id());
         KeyRanges added = local.ranges().difference(current.local.ranges());
 
         for (StoreGroup group : groups.groups)
@@ -301,9 +322,9 @@ public abstract class CommandStores
 
     public static class Synchronized extends CommandStores
     {
-        public Synchronized(int num, Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public Synchronized(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
         {
-            super(num, node, uniqueNow, agent, store, CommandStore.Synchronized::new);
+            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.Synchronized::new);
         }
 
         @Override
@@ -321,14 +342,14 @@ public abstract class CommandStores
 
     public static class SingleThread extends CommandStores
     {
-        public SingleThread(int num, Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
         {
-            this(num, node, uniqueNow, agent, store, CommandStore.SingleThread::new);
+            this(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.SingleThread::new);
         }
 
-        public SingleThread(int num, Node.Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store, CommandStore.Factory shardFactory)
+        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
         {
-            super(num, node, uniqueNow, agent, store, shardFactory);
+            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, shardFactory);
         }
 
         private <S, F, T> T mapReduce(ToLongBiFunction<StoreGroup, S> select, S scope, F f, Fold<F, ?, List<Future<T>>> fold, BiFunction<T, T, T> reduce)
@@ -369,9 +390,9 @@ public abstract class CommandStores
 
     public static class Debug extends SingleThread
     {
-        public Debug(int num, Id node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public Debug(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
         {
-            super(num, node, uniqueNow, agent, store, CommandStore.Debug::new);
+            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.Debug::new);
         }
     }
 

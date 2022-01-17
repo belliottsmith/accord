@@ -4,11 +4,11 @@ import accord.api.Data;
 import accord.api.Query;
 import accord.api.Read;
 import accord.api.Result;
-import accord.api.Store;
+import accord.api.DataStore;
 import accord.api.Update;
 import accord.api.Write;
 
-public class MockStore implements Store
+public class MockStore implements DataStore
 {
     public static final Data DATA = new Data() {
         @Override

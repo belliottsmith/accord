@@ -15,9 +15,14 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
+<<<<<<< HEAD
 import accord.api.MessageSink;
 import accord.burn.BurnTestConfigurationService;
 import accord.local.CommandStores;
+=======
+import accord.impl.SimpleProgressLog;
+import accord.local.CommandStore;
+>>>>>>> 9e2cbf0 (first draft)
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.Scheduler;
@@ -153,7 +158,7 @@ public class Cluster implements Scheduler
                 MessageSink messageSink = sinks.create(node, randomSupplier.get());
                 BurnTestConfigurationService configService = new BurnTestConfigurationService(node, messageSink, randomSupplier, topology, lookup::get);
                 lookup.put(node, new Node(node, messageSink, configService,
-                                          nowSupplier.get(), () -> new ListStore(node), ListAgent.INSTANCE, sinks, CommandStores.Synchronized::new));
+                                          nowSupplier.get(), () -> new ListStore(node), ListAgent.INSTANCE, sinks, SimpleProgressLog::new, CommandStores.Synchronized::new));
             }
 
             List<Id> nodesList = new ArrayList<>(Arrays.asList(nodes));

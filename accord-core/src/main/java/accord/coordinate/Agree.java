@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import accord.api.Key;
 import accord.coordinate.tracking.FastPathTracker;
 import accord.topology.Shard;
 import accord.topology.Topologies;
@@ -27,7 +28,7 @@ import org.apache.cassandra.utils.concurrent.Future;
  * Perform initial rounds of PreAccept and Accept until we have reached agreement about when we should execute.
  * If we are preempted by a recovery coordinator, we abort and let them complete (and notify us about the execution result)
  */
-class Agree extends AcceptPhase implements Callback<PreAcceptReply>
+class Agree extends Propose implements Callback<PreAcceptReply>
 {
     static class ShardTracker extends FastPathTracker.FastPathShardTracker
     {
@@ -134,14 +135,14 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
     // TODO: hybrid fast path? or at least short-circuit accept if we gain a fast-path quorum _and_ proposed one by accept
     boolean permitHybridFastPath;
 
-    private Agree(Node node, TxnId txnId, Txn txn)
+    private Agree(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        super(node, Ballot.ZERO, txnId, txn);
+        super(node, Ballot.ZERO, txnId, txn, homeKey);
         this.keys = txn.keys();
         tracker = new PreacceptTracker(node.topology().forKeys(txn.keys(), txnId.epoch));
         // TODO: consider sending only to electorate of most recent topology (as only these PreAccept votes matter)
         // note that we must send to all replicas of old topology, as electorate may not be reachable
-        node.send(tracker.nodes(), to -> new PreAccept(to, tracker.topologies(), txnId, txn), this);
+        node.send(tracker.nodes(), to -> new PreAccept(to, tracker.topologies(), txnId, txn, homeKey), this);
     }
 
     @Override
@@ -178,7 +179,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         // send messages to new nodes
         Set<Id> needMessages = Sets.difference(tracker.nodes(), previousNodes);
         if (!needMessages.isEmpty())
-            node.send(needMessages, to -> new PreAccept(to, newTopologies, txnId, txn), this);
+            node.send(needMessages, to -> new PreAccept(to, newTopologies, txnId, txn, homeKey), this);
 
         if (tracker.shouldSlowPathAccept())
             onPreAccepted();
@@ -252,8 +253,8 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         return preacceptOutcome != null;
     }
 
-    static Future<Agreed> agree(Node node, TxnId txnId, Txn txn)
+    static Future<Agreed> agree(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        return new Agree(node, txnId, txn);
+        return new Agree(node, txnId, txn, homeKey);
     }
 }

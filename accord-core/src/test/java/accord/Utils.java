@@ -1,6 +1,6 @@
 package accord;
 
-import accord.api.KeyRange;
+import accord.topology.KeyRange;
 import accord.local.Node;
 import accord.impl.mock.MockStore;
 import accord.topology.KeyRanges;

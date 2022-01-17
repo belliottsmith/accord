@@ -1,6 +1,7 @@
 package accord.coordinate.tracking;
 
 import accord.local.Node;
+import accord.local.Node.Id;
 import accord.topology.Shard;
 import accord.topology.Topologies;
 import accord.topology.Topology;
@@ -10,6 +11,7 @@ import com.google.common.base.Preconditions;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
@@ -84,16 +86,23 @@ public abstract class AbstractResponseTracker<T extends AbstractResponseTracker.
         });
     }
 
-    protected int matchingTrackersForNode(Node.Id node, Predicate<T> consumer)
+    protected boolean matchesAndTrackerForNode(Node.Id node, Predicate<T> consumer)
     {
-        int matches = 0;
-        for (int i=0, mi=topologies.size(); i<mi; i++)
+        for (int i = 0 ; i < topologies.size() ; ++i)
         {
-            Topology topology = topologies.get(i);
-            int offset = topologyOffset(i);
-            matches += topology.matchesOn(node, (j, shard) -> consumer.test(trackers[offset + j]));
+            topologies.get(i).matchesOn()
         }
-        return matches;
+        return topologies.current().matchesOn(node, (i, shard) -> consumer.test(trackers[i]));
+    }
+
+    protected int matchingCurrentTrackersForNode(Node.Id node, Predicate<T> consumer)
+    {
+        return topologies.current().matchesOn(node, (i, shard) -> consumer.test(trackers[i]));
+    }
+
+    int matchingCurrentTrackersForNode(Node.Id node, BiPredicate<T, Id> consumer)
+    {
+        return topologies.current().matchesOn(node, (i, shard) -> consumer.test(trackers[i], node));
     }
 
     protected boolean all(Predicate<T> predicate)
