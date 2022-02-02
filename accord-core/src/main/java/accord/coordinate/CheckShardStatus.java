@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import com.google.common.base.Preconditions;
+
 import accord.api.Key;
 import accord.coordinate.tracking.ReadTracker.ReadShardTracker;
 import accord.local.Node;
@@ -64,6 +66,7 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
 
     CheckShardStatus(Node node, TxnId txnId, Txn txn, Key key, Shard shard, byte includeInfo)
     {
+        if (txn == null) throw new AssertionError();
         this.txnId = txnId;
         this.txn = txn;
         this.key = key;

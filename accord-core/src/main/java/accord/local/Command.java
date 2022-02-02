@@ -141,8 +141,8 @@ public class Command implements Listener, Consumer<Listener>
         //  - assign each shard _and_ process a unique id, and use both as components of the timestamp
         Timestamp witnessed = txnId.compareTo(max) > 0 ? txnId : commandStore.uniqueNow(max);
 
-        this.txn = txn;
-        this.homeKey = homeKey;
+        txn(txn);
+        homeKey(homeKey);
         this.executeAt = witnessed;
         this.status = PreAccepted;
 
@@ -200,7 +200,9 @@ public class Command implements Listener, Consumer<Listener>
                 default:
                     throw new IllegalStateException();
                 case NotWitnessed:
-                    command.someKey(savedDeps().get(id).keys.get(0));
+                    Txn depTxn = savedDeps().get(id);
+                    command.someKey(depTxn.keys.get(0));
+                    command.txn(depTxn);
                 case PreAccepted:
                 case Accepted:
                     // we don't know when these dependencies will execute, and cannot execute until we do
@@ -407,6 +409,12 @@ public class Command implements Listener, Consumer<Listener>
     {
         if (someKey == null && homeKey == null)
             someKey = key;
+    }
+
+    public void txn(Txn txn)
+    {
+        if (this.txn == null) this.txn = txn;
+        else if (!this.txn.equals(txn)) throw new AssertionError();
     }
 
     // TODO: maybe make this persistent, or abstract so implementation may do so

@@ -1,5 +1,6 @@
 package accord.api;
 
+import accord.coordinate.CheckOnUncommitted;
 import accord.coordinate.InformHomeOfTxn;
 import accord.txn.TxnId;
 
@@ -15,16 +16,28 @@ import accord.txn.TxnId;
  * The basic logical flow for ensuring a transaction is committed and applied at all replicas is as follows:
  *
  *  - First, ensure a quorum of the home shard is aware of the transaction by invoking {@link InformHomeOfTxn}.
- *    Entry by {@link #nonHomePreaccept} Non-home shards may now forget this transaction for replay purposes ({@link #nonHomePostPreaccept}).
+ *    Entry by {@link #nonHomePreaccept} Non-home shards may now forget this transaction for replay purposes
+ *    ({@link #nonHomePostPreaccept}).
  *
- *  - Now, members of the home shard must ensure it is committed at _all_ shards (triggered by {@link #uncommitted}), 
- *    at which point it will not be monitored for progress ({@link #committed}).
+ *  - Non-home shards may also be informed of transactions that are blocking the progress of other transactions.
+ *    If the {@code waitingOn} transaction that is blocking progress is uncommitted it is required that the progress
+ *    log invoke {@link CheckOnUncommitted} for the transaction if no {@link #nonHomeCommit(TxnId)} is witnessed.
  *
- *  - Once members of the home shard witness a transaction as ready to execute ({@link #readyToExecute}),
- *    they must ensure it is executed and applied to a quorum on each shard
+ *  - Members of the home shard will be informed of a transaction to monitor by the invocation of {@link #uncommitted}.
+ *    If this is not followed closely by {@link #committed}, {@link accord.coordinate.MaybeRecover} should be invoked.
  *
- *  - Finally, once it is applied ({@link #executed}), each shard should independently coordinate disseminating the
+ *  - Members of the home shard will later be informed that the transaction is {@link #readyToExecute}.
+ *    If this is not followed closely by {@link #executed(TxnId)}, {@link accord.coordinate.MaybeRecover} should be invoked.
+ *
+ *  - Finally, it is up to the, each shard should independently coordinate disseminating the
  *    write to every replica.
+ *
+ * Alternatively this may be viewed as a state machine with the following states:
+ *
+ *         NonHomePreAccept, NonHomeSafe, NonHomeWaitingOn,
+ *         Uncommitted, Committed,
+ *         ReadyToExecute, Executed,
+ *         WaitingForExecutedOnAllShards, ExecutedOnAllShards
  */
 public interface ProgressLog
 {
@@ -88,6 +101,8 @@ public interface ProgressLog
      * needs to perform a read, and all nodes which may do so are waiting for the commit record to arrive.
      *
      * In all other scenarios, the implementation is free to choose its course of action.
+     *
+     * TODO (aborts): waitingOnTxn should not be a parameter; only known locally involved keys (not necessarily all keys)
      */
     void waitingOn(TxnId waiting, TxnId waitingOn);
 }

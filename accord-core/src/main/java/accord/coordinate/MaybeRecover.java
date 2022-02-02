@@ -8,7 +8,6 @@ import com.google.common.base.Preconditions;
 import accord.api.Key;
 import accord.local.Node;
 import accord.local.Status;
-import accord.messages.CheckStatus;
 import accord.messages.CheckStatus.CheckStatusOk;
 import accord.messages.CheckStatus.CheckStatusOkFull;
 import accord.messages.CheckStatus.IncludeInfo;
@@ -17,15 +16,24 @@ import accord.txn.Ballot;
 import accord.txn.Txn;
 import accord.txn.TxnId;
 
+import static accord.local.Status.Accepted;
+
 /**
  * A result of null indicates the transaction is globally persistent
  * A result of CheckStatusOk indicates the maximum status found for the transaction, which may be used to assess progress
  */
-public class MaybeRecover extends CheckShardProgress implements BiConsumer<Object, Throwable>
+public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object, Throwable>
 {
+    final Status knownStatus;
+    final Ballot knownPromised;
+    final boolean knownPromisedHasBeenAccepted;
+
     MaybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
     {
-        super(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
+        super(node, txnId, txn, homeKey, homeShard, includeInfo);
+        this.knownStatus = knownStatus;
+        this.knownPromised = knownPromised;
+        this.knownPromisedHasBeenAccepted = knownPromiseHasBeenAccepted;
     }
 
     @Override
@@ -33,6 +41,20 @@ public class MaybeRecover extends CheckShardProgress implements BiConsumer<Objec
     {
         if (fail != null) completeExceptionally(fail);
         else complete(null);
+    }
+
+    @Override
+    boolean hasMetSuccessCriteria()
+    {
+        return tracker.hasReachedQuorum() || hasMadeProgress();
+    }
+
+    public boolean hasMadeProgress()
+    {
+        return max != null && (max.isCoordinating
+                               || max.status.compareTo(knownStatus) > 0
+                               || max.promised.compareTo(knownPromised) > 0
+                               || (!knownPromisedHasBeenAccepted && knownStatus == Accepted && max.accepted.equals(knownPromised)));
     }
 
     // TODO (now): invoke from {node} so we may have mutual exclusion with other attempts to recover or coordinate

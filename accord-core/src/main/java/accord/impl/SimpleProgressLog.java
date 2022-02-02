@@ -12,7 +12,7 @@ import java.util.function.Function;
 import accord.api.Key;
 import accord.api.ProgressLog;
 import accord.api.Result;
-import accord.coordinate.CheckShardProgress;
+import accord.coordinate.CheckOnUncommitted;
 import accord.local.Command;
 import accord.local.CommandStore;
 import accord.local.Node;
@@ -21,8 +21,6 @@ import accord.local.Status;
 import accord.messages.Apply;
 import accord.messages.Callback;
 import accord.messages.CheckStatus.CheckStatusOk;
-import accord.messages.CheckStatus.CheckStatusOkFull;
-import accord.messages.CheckStatus.IncludeInfo;
 import accord.messages.Reply;
 import accord.txn.Ballot;
 import accord.txn.Dependencies;
@@ -31,8 +29,7 @@ import accord.txn.Txn;
 import accord.txn.TxnId;
 import accord.txn.Writes;
 
-import static accord.coordinate.CheckHomeStatus.checkHomeStatus;
-import static accord.coordinate.CheckShardProgress.checkShardProgress;
+import static accord.coordinate.CheckOnUncommitted.checkOnUncommitted;
 import static accord.coordinate.InformHomeOfTxn.inform;
 import static accord.coordinate.MaybeRecover.maybeRecover;
 import static accord.impl.SimpleProgressLog.CoordinateSendAndCheck.sendAndCheck;
@@ -120,7 +117,9 @@ public class SimpleProgressLog implements Runnable, Function<CommandStore, Progr
         void recordWaiter(Command waitingCommand, Command waitingOnCommand)
         {
             if (maxWaitingAt == null || maxWaitingAt.compareTo(waitingCommand.executeAt()) < 0)
+            {
                 maxWaitingAt = waitingCommand.executeAt();
+            }
         }
 
         void recordCheckStatus(CheckStatusOk ok)
@@ -288,104 +287,31 @@ public class SimpleProgressLog implements Runnable, Function<CommandStore, Progr
 
                 case NonHomeWaitingOn:
                 {
-                    if (state.command.homeKey() == null)
-                    {
-                        // check status with the only keys we know, if any, then:
-                        // 1. if we cannot find any primary record of the transaction, then it cannot be a dependency so record this fact
-                        // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
-                        Timestamp maxWaitingAt = state.maxWaitingAt;
-                        Key key = state.command.someKey();
-                        CheckShardProgress check = checkShardProgress(node, txnId, state.command.txn(), key, node.cluster().forKey(key),
-                                                                      state.maxStatus, state.maxPromised, state.maxPromiseHasBeenAccepted,
-                                                                      IncludeInfo.HomeKey.and(IncludeInfo.Dependencies.and(IncludeInfo.ExecuteAt)));
-                        state.inProgress = check;
-                        check.whenComplete((success, fail) -> {
-                            if (state.externalStatus != NonHomeWaitingOn)
-                                return;
+                    // check status with the only keys we know, if any, then:
+                    // 1. if we cannot find any primary record of the transaction, then it cannot be a dependency so record this fact
+                    // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
+                    Timestamp maxWaitingAt = state.maxWaitingAt;
+                    Key key = state.command.someKey();
+                    CheckOnUncommitted check = checkOnUncommitted(node, txnId, state.command.txn(), key, node.cluster().forKey(key), state.maxWaitingAt);
+                    state.inProgress = check;
+                    check.whenComplete((success, fail) -> {
+                        if (state.externalStatus != NonHomeWaitingOn)
+                            return;
 
-                            if (fail != null)
-                            {
-                                state.internalStatus = NoProgress;
-                            }
-                            else if (success.status.compareTo(PreAccepted) < 0)
-                            {
-                                // cannot be a dependency
-                                state.command.mustExecuteAfter(maxWaitingAt);
-                                if (state.maxWaitingAt.equals(maxWaitingAt))
-                                {
-                                    state.externalStatus = NonHomeSafe;
-                                    state.internalStatus = NoProgressExpected;
-                                }
-                                else
-                                {
-                                    state.internalStatus = Waiting;
-                                }
-                            }
-                            else
-                            {
-                                CheckStatusOkFull full = (CheckStatusOkFull) success;
-                                // TODO: record this against all local command stores containing the transaction
-                                state.command.homeKey(full.homeKey);
-                                if (success.status.compareTo(Status.Committed) >= 0)
-                                {
-                                    state.externalStatus = NonHomeSafe;
-                                    state.internalStatus = NoProgressExpected;
-                                    state.command.commit(null, full.homeKey, full.deps, full.executeAt);
-                                }
-                                else if (check.hasMadeProgress())
-                                {
-                                    state.recordCheckStatus(success);
-                                    state.internalStatus = Waiting;
-                                }
-                                else
-                                {
-                                    state.internalStatus = NoProgress;
-                                }
-                            }
-                        });
-                    }
-                    else
-                    {
-                        Timestamp maxWaitingAt = state.maxWaitingAt;
-                        CompletionStage<CheckStatusOk> check = checkHomeStatus(node, txnId, state.command.txn(), state.command.homeKey(),
-                                                                               node.cluster().forKey(state.command.homeKey()),
-                                                                               IncludeInfo.HomeKey.and(IncludeInfo.Dependencies.and(IncludeInfo.ExecuteAt)));
-                        state.inProgress = check;
-                        check.whenComplete((success, fail) -> {
-                            if (state.externalStatus != NonHomeWaitingOn)
-                                return; // TODO: merge with above
+                        // set the new status immediately to account for exceptions;
+                        // we retry at the next interval in all cases as this operation is non-competitive
+                        state.internalStatus = NoProgress;
+                        if (fail != null) // TODO: log?
+                            return;
 
-                            try
-                            {
-                                if (fail != null) state.internalStatus = NoProgress;
-                                else if (success.status.compareTo(Status.Committed) >= 0)
-                                {
-                                    CheckStatusOkFull ok = (CheckStatusOkFull) success;
-                                    state.command.commit(null, ok.homeKey, ok.deps, ok.executeAt);
-                                    state.externalStatus = NonHomeSafe;
-                                    state.internalStatus = NoProgressExpected;
-                                }
-                                else
-                                {
-                                    state.command.mustExecuteAfter(maxWaitingAt);
-                                    if (state.maxWaitingAt.equals(maxWaitingAt))
-                                    {
-                                        state.externalStatus = NonHomeSafe;
-                                        state.internalStatus = NoProgressExpected;
-                                    }
-                                    else
-                                    {
-                                        state.internalStatus = Waiting;
-                                    }
-                                }
-                            }
-                            catch (Throwable t)
-                            {
-                                state.internalStatus = NoProgress;
-                                throw t;
-                            }
-                        });
-                    }
+                        state.recordCheckStatus(success);
+                        if ((success.status.compareTo(PreAccepted) < 0 && state.maxWaitingAt.equals(maxWaitingAt))
+                            || success.status.compareTo(Status.Committed) >= 0)
+                        {
+                            state.externalStatus = NonHomeSafe;
+                            state.internalStatus = NoProgressExpected;
+                        }
+                    });
                     break;
                 }
 
