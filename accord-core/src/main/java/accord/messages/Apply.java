@@ -36,7 +36,7 @@ public class Apply extends TxnRequest
         this(Scope.forTopologies(to, topologies, txn), txnId, txn, executeAt, deps, writes, result);
     }
 
-    public void process(Node node, Id replyToNode, long replyToMessage)
+    public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         node.local(scope()).forEach(instance -> instance.command(txnId).apply(txn, deps, executeAt, writes, result));
     }

@@ -1,7 +1,6 @@
 package accord.local;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -14,6 +13,10 @@ import java.util.stream.Stream;
 import accord.api.*;
 import accord.coordinate.Coordinate;
 import accord.messages.*;
+import accord.messages.Callback;
+import accord.messages.ReplyContext;
+import accord.messages.Request;
+import accord.messages.Reply;
 import accord.topology.Shard;
 import accord.topology.Topology;
 import accord.topology.TopologyManager;
@@ -266,9 +269,9 @@ public class Node implements ConfigurationService.Listener
         messageSink.send(to, send);
     }
 
-    public void reply(Id replyingToNode, long replyingToMessage, Reply send)
+    public void reply(Id replyingToNode, ReplyContext replyContext, Reply send)
     {
-        messageSink.reply(replyingToNode, replyingToMessage, send);
+        messageSink.reply(replyingToNode, replyContext, send);
     }
 
     public TxnId nextTxnId()
@@ -337,15 +340,15 @@ public class Node implements ConfigurationService.Listener
         });
     }
 
-    public void receive(Request request, Id from, long messageId)
+    public void receive(Request request, Id from, ReplyContext replyContext)
     {
         long unknownEpoch = topology().maxUnknownEpoch(request);
         if (unknownEpoch > 0)
         {
-            configService.fetchTopologyForEpoch(unknownEpoch, () -> receive(request, from, messageId));
+            configService.fetchTopologyForEpoch(unknownEpoch, () -> receive(request, from, replyContext));
             return;
         }
-        scheduler.now(() -> request.process(this, from, messageId));
+        scheduler.now(() -> request.process(this, from, replyContext));
     }
 
     public Scheduler scheduler()

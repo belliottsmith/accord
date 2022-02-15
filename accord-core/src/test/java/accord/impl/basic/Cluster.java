@@ -108,7 +108,7 @@ public class Cluster implements Scheduler
                 if (callback != null)
                     on.scheduler().now(() -> callback.onSuccess(deliver.src, reply));
             }
-            else on.receive((Request) deliver.message, deliver.src, deliver.requestId);
+            else on.receive((Request) deliver.message, deliver.src, deliver);
         }
         else
         {

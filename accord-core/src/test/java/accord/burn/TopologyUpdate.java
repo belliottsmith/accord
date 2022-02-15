@@ -160,7 +160,7 @@ public class TopologyUpdate
         return syncMessages.values().stream().map(cmd -> MessageTask.of(node, recipients.apply(cmd), "Sync:" + cmd.txnId + ':' + epoch + ':' + forEpoch, cmd::process));
     }
 
-    private static final boolean COMMITTED_ONLY = false;
+    private static final boolean COMMITTED_ONLY = true;
 
     /**
      * Syncs all replicated commands. Overkill, but useful for confirming issues in optimizedSync

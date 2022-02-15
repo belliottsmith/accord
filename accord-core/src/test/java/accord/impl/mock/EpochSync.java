@@ -4,6 +4,7 @@ import accord.coordinate.tracking.QuorumTracker;
 import accord.local.*;
 import accord.messages.Callback;
 import accord.messages.Reply;
+import accord.messages.ReplyContext;
 import accord.messages.Request;
 import accord.topology.Topologies;
 import accord.topology.Topology;
@@ -52,13 +53,13 @@ public class EpochSync implements Runnable
         }
 
         @Override
-        public void process(Node node, Node.Id from, long messageId)
+        public void process(Node node, Node.Id from, ReplyContext replyContext)
         {
             node.local().forEach(commandStore -> {
                 Command command = commandStore.command(txnId);
                 command.commit(txn, deps, executeAt);
             });
-            node.reply(from, messageId, SyncAck.INSTANCE);
+            node.reply(from, replyContext, SyncAck.INSTANCE);
         }
     }
 
@@ -118,7 +119,7 @@ public class EpochSync implements Runnable
         }
 
         @Override
-        public void process(Node on, Node.Id from, long messageId)
+        public void process(Node on, Node.Id from, ReplyContext replyContext)
         {
             configService(on).reportSyncComplete(from, epoch);
         }

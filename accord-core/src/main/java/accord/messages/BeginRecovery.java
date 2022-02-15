@@ -41,7 +41,7 @@ public class BeginRecovery extends TxnRequest
         this(Scope.forTopologies(to, topologies, txn), txnId, txn, ballot);
     }
 
-    public void process(Node node, Id replyToNode, long replyToMessage)
+    public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         RecoverReply reply = node.local(scope()).map(instance -> {
             Command command = instance.command(txnId);
@@ -142,7 +142,7 @@ public class BeginRecovery extends TxnRequest
                     ok1.writes, ok1.result);
         }).orElseThrow();
 
-        node.reply(replyToNode, replyToMessage, reply);
+        node.reply(replyToNode, replyContext, reply);
         if (reply instanceof RecoverOk && ((RecoverOk) reply).status == Applied)
         {
             // disseminate directly

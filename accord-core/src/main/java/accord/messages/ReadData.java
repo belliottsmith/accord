@@ -24,19 +24,19 @@ public class ReadData extends TxnRequest
         final TxnId txnId;
         final Node node;
         final Node.Id replyToNode;
-        final long replyToMessage;
+        final ReplyContext replyContext;
 
         Data data;
         boolean isObsolete; // TODO: respond with the Executed result we have stored?
         Set<CommandStore> waitingOn;
         Scheduled waitingOnReporter;
 
-        LocalRead(TxnId txnId, Node node, Id replyToNode, long replyToMessage)
+        LocalRead(TxnId txnId, Node node, Id replyToNode, ReplyContext replyContext)
         {
             this.txnId = txnId;
             this.node = node;
             this.replyToNode = replyToNode;
-            this.replyToMessage = replyToMessage;
+            this.replyContext = replyContext;
             // TODO: this is messy, we want a complete separate liveness mechanism that ensures progress for all transactions
             this.waitingOnReporter = node.scheduler().once(new ReportWaiting(), 1L, TimeUnit.SECONDS);
         }
@@ -59,7 +59,7 @@ public class ReadData extends TxnRequest
                 if (blockedBy == null) return;
                 blockedBy.addListener(this);
                 assert blockedBy.status().compareTo(Status.NotWitnessed) > 0;
-                node.reply(replyToNode, replyToMessage, new ReadWaiting(txnId, blockedBy.txnId(), blockedBy.txn(), blockedBy.executeAt(), blockedBy.status()));
+                node.reply(replyToNode, replyContext, new ReadWaiting(txnId, blockedBy.txnId(), blockedBy.txn(), blockedBy.executeAt(), blockedBy.status()));
             }
         }
 
@@ -95,7 +95,7 @@ public class ReadData extends TxnRequest
             if (waitingOn.isEmpty())
             {
                 waitingOnReporter.cancel();
-                node.reply(replyToNode, replyToMessage, new ReadOk(data));
+                node.reply(replyToNode, replyContext, new ReadOk(data));
             }
         }
 
@@ -114,7 +114,7 @@ public class ReadData extends TxnRequest
                 });
                 // FIXME: this may result in redundant messages being sent when a shard is split across several command shards
                 node.send(nodes, to -> new Apply(to, topologies, command.txnId(), command.txn(), command.executeAt(), command.savedDeps(), command.writes(), command.result()));
-                node.reply(replyToNode, replyToMessage, new ReadNack());
+                node.reply(replyToNode, replyContext, new ReadNack());
             }
         }
 
@@ -166,9 +166,9 @@ public class ReadData extends TxnRequest
         this(Scope.forTopologies(to, topologies, txn), txnId, txn, executeAt);
     }
 
-    public void process(Node node, Node.Id from, long messageId)
+    public void process(Node node, Node.Id from, ReplyContext replyContext)
     {
-        new LocalRead(txnId, node, from, messageId).setup(txnId, txn, scope());
+        new LocalRead(txnId, node, from, replyContext).setup(txnId, txn, scope());
     }
 
     public static class ReadReply implements Reply

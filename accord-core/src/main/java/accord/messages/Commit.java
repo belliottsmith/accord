@@ -26,10 +26,10 @@ public class Commit extends ReadData
         this(Scope.forTopologies(to, topologies, txn), txnId, txn, executeAt, deps, read);
     }
 
-    public void process(Node node, Id from, long messageId)
+    public void process(Node node, Id from, ReplyContext replyContext)
     {
         node.local(scope()).forEach(instance -> instance.command(txnId).commit(txn, deps, executeAt));
-        if (read) super.process(node, from, messageId);
+        if (read) super.process(node, from, replyContext);
     }
 
     @Override

@@ -34,9 +34,9 @@ public class Accept extends TxnRequest
         this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, executeAt, deps);
     }
 
-    public void process(Node on, Node.Id replyToNode, long replyToMessage)
+    public void process(Node on, Node.Id replyToNode, ReplyContext replyContext)
     {
-        on.reply(replyToNode, replyToMessage, on.local(scope()).map(instance -> {
+        on.reply(replyToNode, replyContext, on.local(scope()).map(instance -> {
             Command command = instance.command(txnId);
             if (!command.accept(ballot, txn, executeAt, deps))
                 return new AcceptNack(txnId, command.promised());

@@ -17,16 +17,16 @@ public class WaitOnCommit extends TxnRequest
         final Node node;
         final Id replyToNode;
         final TxnId txnId;
-        final long replyToMessage;
+        final ReplyContext replyContext;
 
         final AtomicInteger waitingOn = new AtomicInteger();
 
-        LocalWait(Node node, Id replyToNode, TxnId txnId, long replyToMessage)
+        LocalWait(Node node, Id replyToNode, TxnId txnId, ReplyContext replyContext)
         {
             this.node = node;
             this.replyToNode = replyToNode;
             this.txnId = txnId;
-            this.replyToMessage = replyToMessage;
+            this.replyContext = replyContext;
         }
 
         @Override
@@ -54,7 +54,7 @@ public class WaitOnCommit extends TxnRequest
         private void ack()
         {
             if (waitingOn.decrementAndGet() == 0)
-                node.reply(replyToNode, replyToMessage, new WaitOnCommitOk());
+                node.reply(replyToNode, replyContext, new WaitOnCommitOk());
         }
 
         void process(CommandStore instance)
@@ -99,9 +99,9 @@ public class WaitOnCommit extends TxnRequest
         this(Scope.forTopologies(to, topologies, keys), txnId, keys);
     }
 
-    public void process(Node node, Id replyToNode, long replyToMessage)
+    public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        new LocalWait(node, replyToNode, txnId, replyToMessage).setup(keys);
+        new LocalWait(node, replyToNode, txnId, replyContext).setup(keys);
     }
 
     public static class WaitOnCommitOk implements Reply

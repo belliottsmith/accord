@@ -6,6 +6,7 @@ import accord.api.TestableConfigurationService;
 import accord.local.Node;
 import accord.messages.Callback;
 import accord.messages.Reply;
+import accord.messages.ReplyContext;
 import accord.messages.Request;
 import accord.topology.Topology;
 import org.slf4j.Logger;
@@ -65,10 +66,10 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         }
 
         @Override
-        public void process(Node on, Node.Id from, long messageId)
+        public void process(Node on, Node.Id from, ReplyContext replyContext)
         {
             Topology topology = on.configService().getTopologyForEpoch(epoch);
-            on.reply(from, messageId, new FetchTopologyReply(topology));
+            on.reply(from, replyContext, new FetchTopologyReply(topology));
         }
 
         @Override
