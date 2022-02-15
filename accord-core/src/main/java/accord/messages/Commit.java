@@ -11,8 +11,8 @@ import accord.txn.TxnId;
 // TODO: CommitOk responses, so we can send again if no reply received? Or leave to recovery?
 public class Commit extends ReadData
 {
-    final Dependencies deps;
-    final boolean read;
+    public final Dependencies deps;
+    public final boolean read;
 
     public Commit(Scope scope, TxnId txnId, Txn txn, Timestamp executeAt, Dependencies deps, boolean read)
     {

@@ -149,9 +149,9 @@ public class ReadData extends TxnRequest
         }
     }
 
-    final TxnId txnId;
-    final Txn txn;
-    final Timestamp executeAt;
+    public final TxnId txnId;
+    public final Txn txn;
+    public final Timestamp executeAt;
 
     public ReadData(Scope scope, TxnId txnId, Txn txn, Timestamp executeAt)
     {

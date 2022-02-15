@@ -24,9 +24,9 @@ import static accord.messages.PreAccept.calculateDeps;
 
 public class BeginRecovery extends TxnRequest
 {
-    final TxnId txnId;
-    final Txn txn;
-    final Ballot ballot;
+    public final TxnId txnId;
+    public final Txn txn;
+    public final Ballot ballot;
 
     public BeginRecovery(Scope scope, TxnId txnId, Txn txn, Ballot ballot)
     {
@@ -194,7 +194,7 @@ public class BeginRecovery extends TxnRequest
         public final Writes writes;
         public final Result result;
 
-        RecoverOk(TxnId txnId, Status status, Ballot accepted, Timestamp executeAt, Dependencies deps, Dependencies earlierCommittedWitness, Dependencies earlierAcceptedNoWitness, boolean rejectsFastPath, Writes writes, Result result)
+        public RecoverOk(TxnId txnId, Status status, Ballot accepted, Timestamp executeAt, Dependencies deps, Dependencies earlierCommittedWitness, Dependencies earlierAcceptedNoWitness, boolean rejectsFastPath, Writes writes, Result result)
         {
             this.txnId = txnId;
             this.accepted = accepted;
@@ -234,8 +234,8 @@ public class BeginRecovery extends TxnRequest
 
     public static class RecoverNack implements RecoverReply
     {
-        final Ballot supersededBy;
-        private RecoverNack(Ballot supersededBy)
+        public final Ballot supersededBy;
+        public RecoverNack(Ballot supersededBy)
         {
             this.supersededBy = supersededBy;
         }

@@ -54,7 +54,7 @@ public class WaitOnCommit extends TxnRequest
         private void ack()
         {
             if (waitingOn.decrementAndGet() == 0)
-                node.reply(replyToNode, replyContext, new WaitOnCommitOk());
+                node.reply(replyToNode, replyContext, WaitOnCommitOk.INSTANCE);
         }
 
         void process(CommandStore instance)
@@ -84,8 +84,8 @@ public class WaitOnCommit extends TxnRequest
         }
     }
 
-    final TxnId txnId;
-    final Keys keys;
+    public final TxnId txnId;
+    public final Keys keys;
 
     public WaitOnCommit(Scope scope, TxnId txnId, Keys keys)
     {
@@ -112,6 +112,10 @@ public class WaitOnCommit extends TxnRequest
 
     public static class WaitOnCommitOk implements Reply
     {
+        public static final WaitOnCommitOk INSTANCE = new WaitOnCommitOk();
+
+        private WaitOnCommitOk() {}
+
         @Override
         public MessageType type()
         {
