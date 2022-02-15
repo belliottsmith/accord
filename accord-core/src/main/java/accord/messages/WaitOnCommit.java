@@ -104,7 +104,18 @@ public class WaitOnCommit extends TxnRequest
         new LocalWait(node, replyToNode, txnId, replyContext).setup(keys);
     }
 
+    @Override
+    public MessageType type()
+    {
+        return MessageType.WAIT_ON_COMMIT_REQ;
+    }
+
     public static class WaitOnCommitOk implements Reply
     {
+        @Override
+        public MessageType type()
+        {
+            return MessageType.WAIT_ON_COMMIT_RSP;
+        }
     }
 }

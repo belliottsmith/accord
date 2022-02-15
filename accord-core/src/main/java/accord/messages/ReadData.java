@@ -171,8 +171,20 @@ public class ReadData extends TxnRequest
         new LocalRead(txnId, node, from, replyContext).setup(txnId, txn, scope());
     }
 
+    @Override
+    public MessageType type()
+    {
+        return MessageType.READ_REQ;
+    }
+
     public static class ReadReply implements Reply
     {
+        @Override
+        public MessageType type()
+        {
+            return MessageType.READ_RSP;
+        }
+
         public boolean isOK()
         {
             return true;

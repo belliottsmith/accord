@@ -53,8 +53,20 @@ public class PreAccept extends TxnRequest
         }).orElseThrow());
     }
 
+    @Override
+    public MessageType type()
+    {
+        return MessageType.PREACCEPT_REQ;
+    }
+
     public interface PreAcceptReply extends Reply
     {
+        @Override
+        default MessageType type()
+        {
+            return MessageType.PREACCEPT_RSP;
+        }
+
         boolean isOK();
     }
 

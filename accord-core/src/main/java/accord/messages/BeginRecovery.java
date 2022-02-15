@@ -163,9 +163,21 @@ public class BeginRecovery extends TxnRequest
         Topologies topologies = node.topology().forKeys(txn.keys, ok.executeAt.epoch);
         node.send(topologies.nodes(), to -> new Apply(to, topologies, txnId, txn, ok.executeAt, ok.deps, ok.writes, ok.result));
     }
+    
+    @Override
+    public MessageType type()
+    {
+        return MessageType.RECOVER_REQ;
+    }
 
     public interface RecoverReply extends Reply
     {
+        @Override
+        default MessageType type()
+        {
+            return MessageType.RECOVER_RSP;
+        }
+
         boolean isOK();
     }
 

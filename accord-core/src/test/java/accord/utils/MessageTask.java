@@ -1,10 +1,7 @@
 package accord.utils;
 
 import accord.local.Node;
-import accord.messages.Callback;
-import accord.messages.Reply;
-import accord.messages.ReplyContext;
-import accord.messages.Request;
+import accord.messages.*;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
@@ -28,6 +25,12 @@ public class MessageTask extends CompletableFuture<Void> implements Runnable
 
     private static final Reply SUCCESS = new Reply() {
         @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public String toString()
         {
             return "SUCCESS";
@@ -35,6 +38,12 @@ public class MessageTask extends CompletableFuture<Void> implements Runnable
     };
 
     private static final Reply FAILURE = new Reply() {
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
+        }
+
         @Override
         public String toString()
         {
@@ -63,6 +72,12 @@ public class MessageTask extends CompletableFuture<Void> implements Runnable
         public void process(Node on, Node.Id from, ReplyContext replyContext)
         {
             on.reply(from, replyContext, process.process(on, from) ? SUCCESS : FAILURE);
+        }
+
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
         }
 
         @Override

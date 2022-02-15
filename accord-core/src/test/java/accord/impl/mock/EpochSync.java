@@ -2,10 +2,7 @@ package accord.impl.mock;
 
 import accord.coordinate.tracking.QuorumTracker;
 import accord.local.*;
-import accord.messages.Callback;
-import accord.messages.Reply;
-import accord.messages.ReplyContext;
-import accord.messages.Request;
+import accord.messages.*;
 import accord.topology.Topologies;
 import accord.topology.Topology;
 import accord.txn.*;
@@ -61,12 +58,24 @@ public class EpochSync implements Runnable
             });
             node.reply(from, replyContext, SyncAck.INSTANCE);
         }
+
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class SyncAck implements Reply
     {
         private static final SyncAck INSTANCE = new SyncAck();
         private SyncAck() {}
+
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class CommandSync extends CompletableFuture<Void> implements Callback<SyncAck>
@@ -122,6 +131,12 @@ public class EpochSync implements Runnable
         public void process(Node on, Node.Id from, ReplyContext replyContext)
         {
             configService(on).reportSyncComplete(from, epoch);
+        }
+
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
         }
     }
 

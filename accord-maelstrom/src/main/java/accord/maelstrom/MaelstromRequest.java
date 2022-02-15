@@ -5,6 +5,7 @@ import java.util.NavigableSet;
 import java.util.TreeSet;
 
 import accord.api.Key;
+import accord.messages.MessageType;
 import accord.messages.ReplyContext;
 import accord.txn.Keys;
 import com.google.gson.stream.JsonReader;
@@ -34,6 +35,12 @@ public class MaelstromRequest extends Body implements Request
 //            else node.reply(client, messageId, new Error(messageId, 13, fail.getMessage()));
             return null;
         });
+    }
+
+    @Override
+    public MessageType type()
+    {
+        throw new UnsupportedOperationException();
     }
 
     @Override

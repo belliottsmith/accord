@@ -53,8 +53,20 @@ public class Accept extends TxnRequest
         }).orElseThrow());
     }
 
+    @Override
+    public MessageType type()
+    {
+        return MessageType.ACCEPT_REQ;
+    }
+
     public interface AcceptReply extends Reply
     {
+        @Override
+        default MessageType type()
+        {
+            return MessageType.ACCEPT_RSP;
+        }
+
         boolean isOK();
     }
 

@@ -33,6 +33,12 @@ public class Commit extends ReadData
     }
 
     @Override
+    public MessageType type()
+    {
+        return MessageType.COMMIT_REQ;
+    }
+
+    @Override
     public String toString()
     {
         return "Commit{txnId: " + txnId +

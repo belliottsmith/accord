@@ -4,10 +4,7 @@ import accord.api.ConfigurationService;
 import accord.api.MessageSink;
 import accord.api.TestableConfigurationService;
 import accord.local.Node;
-import accord.messages.Callback;
-import accord.messages.Reply;
-import accord.messages.ReplyContext;
-import accord.messages.Request;
+import accord.messages.*;
 import accord.topology.Topology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +70,12 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         }
 
         @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public String toString()
         {
             return "FetchTopologyRequest{" + epoch + '}';
@@ -86,6 +89,12 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         public FetchTopologyReply(Topology topology)
         {
             this.topology = topology;
+        }
+
+        @Override
+        public MessageType type()
+        {
+            throw new UnsupportedOperationException();
         }
 
         @Override
