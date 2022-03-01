@@ -1,12 +1,14 @@
 package accord.txn;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.topology.KeyRanges;
+import org.checkerframework.checker.units.qual.K;
 
 @SuppressWarnings("rawtypes")
 public class Keys implements Iterable<Key>
@@ -178,6 +180,4 @@ public class Keys implements Iterable<Key>
 
         return result != null ? new Keys(result) : EMPTY;
     }
-
-
 }

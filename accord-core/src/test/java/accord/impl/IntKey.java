@@ -136,4 +136,10 @@ public class IntKey implements Key<IntKey>
     {
         return Objects.hash(key);
     }
+
+    @Override
+    public int keyHash()
+    {
+        return hashCode();
+    }
 }

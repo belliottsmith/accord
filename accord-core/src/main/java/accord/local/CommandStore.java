@@ -16,85 +16,57 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 /**
  * Single threaded internal shard of accord transaction metadata
  */
 public abstract class CommandStore
 {
-    // TODO: consider sharding on key hash, rather than splitting ranges
-    static class Mapping
-    {
-        static final Mapping EMPTY = new Mapping(KeyRanges.EMPTY, Topology.EMPTY);
-        final KeyRanges ranges;
-        final Topology local;
-
-        public Mapping(KeyRanges ranges, Topology local)
-        {
-            this.ranges = ranges;
-            this.local = local;
-        }
-
-        public Mapping withNewLocalTopology(Topology local)
-        {
-            return new Mapping(ranges, local);
-        }
-
-        static void withNewLocalTopology(Mapping[] current, Topology local, Mapping[] dst)
-        {
-            for (int i=0; i<current.length; i++)
-                dst[i] = current[i].withNewLocalTopology(local);
-        }
-
-        static Mapping[] withNewLocalTopology(Mapping[] current, Topology locals)
-        {
-            Mapping[] result = new Mapping[current.length];
-            withNewLocalTopology(current, locals, result);
-            return result;
-        }
-    }
-
     public interface Factory
     {
         CommandStore create(int index,
+                            int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent,
                             Store store,
-                            Mapping initialMapping,
-                            IntFunction<Mapping> mappingSupplier);
+                            KeyRanges ranges,
+                            Supplier<Topology> localTopologySupplier);
         Factory SYNCHRONIZED = Synchronized::new;
         Factory SINGLE_THREAD = SingleThread::new;
         Factory SINGLE_THREAD_DEBUG = SingleThreadDebug::new;
     }
 
     private final int index;
+    private final int numShards;
     private final Node.Id nodeId;
     private final Function<Timestamp, Timestamp> uniqueNow;
     private final Agent agent;
     private final Store store;
-    private final IntFunction<Mapping> mappingSupplier;
-    private Mapping rangeMap;
+    private final KeyRanges ranges;
+    private final Supplier<Topology> localTopologySupplier;
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
 
     public CommandStore(int index,
+                        int numShards,
                         Node.Id nodeId,
                         Function<Timestamp, Timestamp> uniqueNow,
                         Agent agent,
                         Store store,
-                        Mapping initialMapping,
-                        IntFunction<Mapping> mappingSupplier)
+                        KeyRanges ranges,
+                        Supplier<Topology> localTopologySupplier)
     {
         this.index = index;
+        this.numShards = numShards;
         this.nodeId = nodeId;
         this.uniqueNow = uniqueNow;
         this.agent = agent;
         this.store = store;
-        this.rangeMap = initialMapping;
-        this.mappingSupplier = mappingSupplier;
+        this.ranges = ranges;
+        this.localTopologySupplier = localTopologySupplier;
     }
 
     public Command command(TxnId txnId)
@@ -139,13 +111,12 @@ public abstract class CommandStore
 
     public long epoch()
     {
-        return rangeMap.local.epoch();
+        return localTopologySupplier.get().epoch();
     }
 
     public KeyRanges ranges()
     {
-        // TODO: check thread safety of callers
-        return rangeMap.ranges;
+        return ranges;
     }
 
     void purgeRanges(KeyRanges removed)
@@ -161,7 +132,7 @@ public abstract class CommandStore
                 if (forKey != null)
                 {
                     for (Command command : forKey)
-                        if (command.txn() != null && !rangeMap.ranges.intersects(command.txn().keys))
+                        if (command.txn() != null && !ranges.intersects(command.txn().keys))
                             commands.remove(command.txnId());
                 }
                 keyIterator.remove();
@@ -215,7 +186,18 @@ public abstract class CommandStore
 
     public boolean intersects(Keys keys)
     {
-        return rangeMap.ranges.intersects(keys);
+        if (!ranges.intersects(keys))
+            return false;
+
+        Keys intersection = keys.intersection(ranges);
+        for (int i=0, mi=intersection.size(); i<mi; i++)
+        {
+            Key key = intersection.get(i);
+            if (key.keyHash() % numShards == index)
+                return true;
+        }
+
+        return false;
     }
 
     public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)
@@ -224,16 +206,10 @@ public abstract class CommandStore
             store.process(consumer);
     }
 
-    private void refreshRangeMap()
-    {
-        rangeMap = mappingSupplier.apply(index);
-    }
-
     <R> void processInternal(Function<? super CommandStore, R> function, CompletableFuture<R> future)
     {
         try
         {
-            refreshRangeMap();
             future.complete(function.apply(this));
         }
         catch (Throwable e)
@@ -246,7 +222,6 @@ public abstract class CommandStore
     {
         try
         {
-            refreshRangeMap();
             consumer.accept(this);
             future.complete(null);
         }
@@ -281,14 +256,15 @@ public abstract class CommandStore
     public static class Synchronized extends CommandStore
     {
         public Synchronized(int index,
+                            int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent,
                             Store store,
-                            Mapping initialMapping,
-                            IntFunction<Mapping> mappingSupplier)
+                            KeyRanges ranges,
+                            Supplier<Topology> localTopologySupplier)
         {
-            super(index, nodeId, uniqueNow, agent, store, initialMapping, mappingSupplier);
+            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
         }
 
         @Override
@@ -348,14 +324,15 @@ public abstract class CommandStore
         }
 
         public SingleThread(int index,
+                            int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent,
                             Store store,
-                            Mapping initialMapping,
-                            IntFunction<Mapping> mappingSupplier)
+                            KeyRanges ranges,
+                            Supplier<Topology> localTopologySupplier)
         {
-            super(index, nodeId, uniqueNow, agent, store, initialMapping, mappingSupplier);
+            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
                 thread.setName(CommandStore.class.getSimpleName() + '[' + nodeId + ':' + index + ']');
@@ -391,14 +368,15 @@ public abstract class CommandStore
         private final AtomicReference<Thread> expectedThread = new AtomicReference<>();
 
         public SingleThreadDebug(int index,
+                                 int numShards,
                                  Node.Id nodeId,
                                  Function<Timestamp, Timestamp> uniqueNow,
                                  Agent agent,
                                  Store store,
-                                 Mapping initialMapping,
-                                 IntFunction<Mapping> mappingSupplier)
+                                 KeyRanges ranges,
+                                 Supplier<Topology> localTopologySupplier)
         {
-            super(index, nodeId, uniqueNow, agent, store, initialMapping, mappingSupplier);
+            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
         }
 
         private void assertThread()

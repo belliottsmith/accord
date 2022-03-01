@@ -5,6 +5,7 @@ import java.io.IOException;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.topology.KeyRanges;
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
 import com.google.gson.TypeAdapter;
@@ -96,4 +97,10 @@ public class MaelstromKey extends Datum<MaelstromKey> implements Key<MaelstromKe
             return MaelstromKey.read(in);
         }
     };
- }
+
+    @Override
+    public int keyHash()
+    {
+        return Objects.hashCode(kind, value);
+    }
+}

@@ -143,4 +143,10 @@ public class IntHashKey implements Key<IntHashKey>
         crc32c.update(key >> 24);
         return (int)crc32c.getValue();
     }
+
+    @Override
+    public int keyHash()
+    {
+        return hash;
+    }
 }
