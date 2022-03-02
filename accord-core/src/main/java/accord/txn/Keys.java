@@ -1,14 +1,13 @@
 package accord.txn;
 
 import java.util.*;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.topology.KeyRanges;
-import org.checkerframework.checker.units.qual.K;
 
 @SuppressWarnings("rawtypes")
 public class Keys implements Iterable<Key>
@@ -179,5 +178,58 @@ public class Keys implements Iterable<Key>
             result = Arrays.copyOf(result, resultSize);
 
         return result != null ? new Keys(result) : EMPTY;
+    }
+
+    /**
+     * Count the number of keys matching the predicate and intersecting with the given ranges.
+     * If terminateAfter is greater than 0, the method will return once terminateAfter matches are encountered
+     */
+    public int countIntersecting(KeyRanges ranges, Predicate<Key> predicate, int terminateAfter)
+    {
+        int matches = 0;
+
+        int keyLB = 0;
+        int keyHB = size();
+        int rangeLB = 0;
+        int rangeHB = ranges.rangeIndexForKey(keys[keyHB-1]);
+        rangeHB = rangeHB < 0 ? -1 - rangeHB : rangeHB + 1;
+
+        for (;rangeLB<rangeHB && keyLB<keyHB;)
+        {
+            Key key = keys[keyLB];
+            rangeLB = ranges.rangeIndexForKey(rangeLB, ranges.size(), key);
+
+            if (rangeLB < 0)
+            {
+                rangeLB = -1 -rangeLB;
+                if (rangeLB >= rangeHB)
+                    break;
+                keyLB = ranges.get(rangeLB).lowKeyIndex(this, keyLB, keyHB);
+            }
+            else
+            {
+                KeyRange<?> range = ranges.get(rangeLB);
+                int highKey = range.higherKeyIndex(this, keyLB, keyHB);
+
+                for (int i=keyLB; i<highKey; i++)
+                {
+                    if (!predicate.test(keys[i]))
+                        continue;
+
+                    matches++;
+
+                    if (terminateAfter > 0 && matches == terminateAfter)
+                        return matches;
+                }
+
+                keyLB = highKey;
+                rangeLB++;
+            }
+
+            if (keyLB < 0)
+                keyLB = -1 - keyLB;
+        }
+
+        return matches;
     }
 }

@@ -34,22 +34,14 @@ public class CommandStores
 
         private boolean updateBitset(Keys keys, BitSet bitSet)
         {
-            Keys intersection = keys.intersection(ranges);
-            if (intersection.isEmpty())
-                return false;
-
             int matches = bitSet.cardinality();
-            for (int i=0, mi=keys.size(); i<mi; i++)
-            {
-                if (matches == stores.length)
-                    return true;
-                int idx = keys.get(i).keyHash() % stores.length;
+            matches += keys.countIntersecting(ranges, key -> {
+                int idx = key.keyHash() % stores.length;
                 if (bitSet.get(idx))
-                    continue;
+                    return false;
                 bitSet.set(idx);
-                matches++;
-            }
-
+                return true;
+            }, stores.length - matches);
             return matches == stores.length;
         }
 
