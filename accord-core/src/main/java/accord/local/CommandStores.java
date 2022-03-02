@@ -1,6 +1,7 @@
 package accord.local;
 
 import accord.api.Agent;
+import accord.api.Key;
 import accord.api.Store;
 import accord.messages.TxnRequest;
 import accord.topology.KeyRanges;
@@ -36,7 +37,7 @@ public class CommandStores
         {
             int matches = bitSet.cardinality();
             matches += keys.countIntersecting(ranges, key -> {
-                int idx = key.keyHash() % stores.length;
+                int idx = keyIndex(key, stores.length);
                 if (bitSet.get(idx))
                     return false;
                 bitSet.set(idx);
@@ -71,6 +72,11 @@ public class CommandStores
                 return null;
             return StreamSupport.stream(new ShardSpliterator(stores, bitSet::get), false);
         }
+    }
+
+    static int keyIndex(Key key, int numShards)
+    {
+        return (int) (Integer.toUnsignedLong(key.keyHash()) % numShards);
     }
 
     static class StoreGroups

@@ -186,7 +186,7 @@ public abstract class CommandStore
 
     public boolean intersects(Keys keys)
     {
-        return keys.countIntersecting(ranges, key -> key.keyHash() % numShards == index, 1) > 0;
+        return keys.countIntersecting(ranges, key -> CommandStores.keyIndex(key, numShards) == index, 1) > 0;
     }
 
     public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)
