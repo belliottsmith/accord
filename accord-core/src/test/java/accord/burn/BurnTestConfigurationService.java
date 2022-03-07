@@ -6,6 +6,9 @@ import accord.api.TestableConfigurationService;
 import accord.local.Node;
 import accord.messages.*;
 import accord.topology.Topology;
+import org.apache.cassandra.utils.concurrent.AsyncPromise;
+import org.apache.cassandra.utils.concurrent.Future;
+import org.apache.cassandra.utils.concurrent.ImmediateFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +20,7 @@ import java.util.function.Supplier;
 public class BurnTestConfigurationService implements TestableConfigurationService
 {
     private static final Logger logger = LoggerFactory.getLogger(BurnTestConfigurationService.class);
+    private static final Future<Void> SUCCESS = ImmediateFuture.success(null);
 
     private final Node.Id node;
     private final MessageSink messageSink;
@@ -105,7 +109,7 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         }
     }
 
-    private class FetchTopology implements Callback<FetchTopologyReply>
+    private class FetchTopology extends AsyncPromise<Void> implements Callback<FetchTopologyReply>
     {
         private final FetchTopologyRequest request;
         private final List<Node.Id> candidates;
@@ -160,17 +164,15 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
     private final Map<Long, FetchTopology> pendingEpochs = new HashMap<>();
 
     @Override
-    public synchronized void fetchTopologyForEpoch(long epoch, Runnable onComplete)
+    public synchronized Future<Void> fetchTopologyForEpoch(long epoch)
     {
         if (epoch < epochs.size())
         {
-            if (onComplete != null ) onComplete.run();
-            return;
+            return SUCCESS;
         }
 
         FetchTopology fetch = pendingEpochs.computeIfAbsent(epoch, FetchTopology::new);
-        if (onComplete != null)
-            fetch.onComplete(onComplete);
+        return fetch;
     }
 
     @Override
@@ -189,7 +191,7 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
 
         if (topology.epoch() > epochs.size())
         {
-            fetchTopologyForEpoch(epochs.size() + 1, () -> reportTopology(topology));
+            fetchTopologyForEpoch(epochs.size() + 1).addListener(() -> reportTopology(topology));
             return;
         }
         logger.trace("Epoch {} received by {}", topology.epoch(), node);
@@ -203,7 +205,7 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         if (fetch == null)
             return;
 
-        fetch.fireCallbacks();
+        fetch.setSuccess(null);
     }
 
 }

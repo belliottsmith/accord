@@ -150,7 +150,7 @@ public class BeginRecovery extends TxnRequest
             ConfigurationService configService = node.configService();
             if (ok.executeAt.epoch > configService.currentEpoch())
             {
-                configService.fetchTopologyForEpoch(ok.executeAt.epoch, () -> disseminateApply(node, ok));
+                configService.fetchTopologyForEpoch(ok.executeAt.epoch).addListener(() -> disseminateApply(node, ok));
                 return;
             }
             disseminateApply(node, ok);

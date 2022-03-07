@@ -131,7 +131,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         if (!response.isOK())
         {
-            completeExceptionally(new Preempted());
+            setFailure(new Preempted());
             return;
         }
 
@@ -170,7 +170,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
                 case ReadyToExecute:
                 case Executed:
                 case Applied:
-                    complete(new Agreed(txnId, txn, acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch), acceptOrCommit.writes, acceptOrCommit.result));
+                    setSuccess(new Agreed(txnId, txn, acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch), acceptOrCommit.writes, acceptOrCommit.result));
                     return;
             }
         }
@@ -202,7 +202,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
             {
                 awaitCommits(node, earlierAcceptedNoWitness).whenComplete((success, failure) -> {
                     if (success != null) retry();
-                    else completeExceptionally(new Timeout());
+                    else setFailure(new Timeout());
                 });
                 return;
             }
@@ -214,9 +214,9 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
     private void retry()
     {
-        new Recover(node, ballot, txnId, txn, node.topology().forEpoch(txn, txnId.epoch)).whenComplete((success, failure) -> {
-            if (success != null) complete(success);
-            else completeExceptionally(failure);
+        new Recover(node, ballot, txnId, txn, node.topology().forEpoch(txn, txnId.epoch)).addCallback((success, failure) -> {
+            if (success != null) setSuccess(success);
+            else setFailure(failure);
         });
     }
 
@@ -228,6 +228,6 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         tracker.recordFailure(from);
         if (tracker.hasFailed())
-            completeExceptionally(new Timeout());
+            setFailure(new Timeout());
     }
 }
