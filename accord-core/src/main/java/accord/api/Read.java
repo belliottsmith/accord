@@ -9,5 +9,5 @@ import accord.topology.KeyRanges;
  */
 public interface Read
 {
-    Data read(KeyRanges ranges, Store store);
+    Data read(KeyRanges ranges, DataStore store);
 }

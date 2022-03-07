@@ -2,8 +2,10 @@ package accord.local;
 
 import accord.api.Agent;
 import accord.api.Key;
-import accord.api.KeyRange;
-import accord.api.Store;
+import accord.api.ProgressLog;
+import accord.api.Scheduler;
+import accord.topology.KeyRange;
+import accord.api.DataStore;
 import accord.topology.KeyRanges;
 import accord.topology.Shard;
 import accord.topology.Shards;
@@ -11,6 +13,7 @@ import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.TxnId;
+
 import com.google.common.base.Preconditions;
 
 import java.util.*;
@@ -26,17 +29,18 @@ public abstract class CommandStore
 {
     public interface Factory
     {
-        CommandStore create(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store);
+        CommandStore create(int index, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Function<? super CommandStore, ? extends ProgressLog> retryLog, Scheduler scheduler);
         Factory SYNCHRONIZED = Synchronized::new;
         Factory SINGLE_THREAD = SingleThread::new;
         Factory SINGLE_THREAD_DEBUG = SingleThreadDebug::new;
     }
 
     private final int index;
-    private final Node.Id nodeId;
+    private final Node node;
     private final Function<Timestamp, Timestamp> uniqueNow;
     private final Agent agent;
-    private final Store store;
+    private final DataStore store;
+    private final ProgressLog progressLog;
 
     /**
      * maps ranges handled by this command store to their current shards by index
@@ -83,13 +87,14 @@ public abstract class CommandStore
         }
     }
 
-    public CommandStore(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+    public CommandStore(int index, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Function<? super CommandStore, ? extends ProgressLog> retryLogFactory, Scheduler scheduler)
     {
         this.index = index;
-        this.nodeId = nodeId;
+        this.node = node;
         this.uniqueNow = uniqueNow;
         this.agent = agent;
         this.store = store;
+        this.progressLog = retryLogFactory.apply(this);
     }
 
     private volatile RangeMapping rangeMap = RangeMapping.EMPTY;
@@ -118,7 +123,7 @@ public abstract class CommandStore
         return commandsForKey.containsKey(key);
     }
 
-    public Store store()
+    public DataStore store()
     {
         return store;
     }
@@ -133,9 +138,14 @@ public abstract class CommandStore
         return agent;
     }
 
-    public Node.Id nodeId()
+    public ProgressLog progressLog()
     {
-        return nodeId;
+        return progressLog;
+    }
+
+    public Node node()
+    {
+        return node;
     }
 
     public KeyRanges ranges()
@@ -144,10 +154,46 @@ public abstract class CommandStore
         return rangeMap.ranges;
     }
 
-    public Set<Node.Id> nodesFor(Command command)
+    // TODO: efficiency
+    List<Shard> shardsFor(Command command)
     {
         RangeMapping mapping = rangeMap;
         Keys keys = command.txn().keys;
+
+        List<Shard> result = new ArrayList<>();
+        int lowerBound = 0;
+        for (int i=0; i<mapping.ranges.size(); i++)
+        {
+            KeyRange range = mapping.ranges.get(i);
+            int lowKeyIdx = range.lowKeyIndex(keys, lowerBound, keys.size());
+
+            if (lowKeyIdx < -keys.size())
+                break;
+
+            if (lowKeyIdx < 0)
+            {
+                // all remaining keys are greater than this range, so go to the next one
+                lowerBound = -1 - lowKeyIdx;
+                continue;
+            }
+
+            // otherwise this range intersects with the txn, so add it's shard's endpoings
+            // TODO: filter pending nodes for reads
+            result.add(mapping.shards[i]);
+            lowerBound = lowKeyIdx;
+        }
+
+        return result;
+    }
+
+    public Set<Node.Id> nodesFor(Command command)
+    {
+        return nodesFor(command.txn().keys);
+    }
+
+    public Set<Node.Id> nodesFor(Keys keys)
+    {
+        RangeMapping mapping = rangeMap;
 
         Set<Node.Id> result = new HashSet<>();
         int lowerBound = 0;
@@ -173,6 +219,15 @@ public abstract class CommandStore
         }
 
         return result;
+    }
+
+    protected Timestamp maxConflict(Keys keys)
+    {
+        return keys.stream()
+                   .map(this::commandsForKey)
+                   .map(CommandsForKey::max)
+                   .max(Comparator.naturalOrder())
+                   .orElse(Timestamp.NONE);
     }
 
     static RangeMapping mapRanges(KeyRanges mergedRanges, Topology localTopology)
@@ -287,9 +342,9 @@ public abstract class CommandStore
 
     public static class Synchronized extends CommandStore
     {
-        public Synchronized(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public Synchronized(int index, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Function<? super CommandStore, ? extends ProgressLog> retryLog, Scheduler scheduler)
         {
-            super(index, nodeId, uniqueNow, agent, store);
+            super(index, node, uniqueNow, agent, store, retryLog, scheduler);
         }
 
         @Override
@@ -348,12 +403,12 @@ public abstract class CommandStore
             }
         }
 
-        public SingleThread(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public SingleThread(int index, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Function<? super CommandStore, ? extends ProgressLog> retryLogFactory, Scheduler scheduler)
         {
-            super(index, nodeId, uniqueNow, agent, store);
+            super(index, node, uniqueNow, agent, store, retryLogFactory, scheduler);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
-                thread.setName(CommandStore.class.getSimpleName() + '[' + nodeId + ':' + index + ']');
+                thread.setName(CommandStore.class.getSimpleName() + '[' + node.id() + ':' + index + ']');
                 return thread;
             });
         }
@@ -385,9 +440,9 @@ public abstract class CommandStore
     {
         private final AtomicReference<Thread> expectedThread = new AtomicReference<>();
 
-        public SingleThreadDebug(int index, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store)
+        public SingleThreadDebug(int index, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Function<? super CommandStore, ? extends ProgressLog> retryLogFactory, Scheduler scheduler)
         {
-            super(index, nodeId, uniqueNow, agent, store);
+            super(index, node, uniqueNow, agent, store, retryLogFactory, scheduler);
         }
 
         private void assertThread()

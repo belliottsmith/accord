@@ -3,9 +3,7 @@ package accord.topology;
 import java.util.Collections;
 import java.util.Map;
 
-import accord.api.KeyRange;
 import accord.local.Node.Id;
-import accord.txn.Keys;
 
 public class Shards extends Topology
 {

@@ -8,6 +8,9 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import com.google.common.base.Preconditions;
+
+import accord.api.Key;
 import accord.local.Node;
 import accord.api.Result;
 import accord.txn.Txn;
@@ -27,14 +30,16 @@ public class Coordinate
         return result;
     }
 
-    public static CompletionStage<Result> execute(Node node, TxnId txnId, Txn txn)
+    public static CompletionStage<Result> execute(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        return andThenExecute(node, Agree.agree(node, txnId, txn));
+        Preconditions.checkArgument(node.isReplicaOf(homeKey));
+        return andThenExecute(node, Agree.agree(node, txnId, txn, homeKey));
     }
 
-    public static CompletionStage<Result> recover(Node node, TxnId txnId, Txn txn)
+    public static CompletionStage<Result> recover(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        return andThenExecute(node, new Recover(node, new Ballot(node.uniqueNow()), txnId, txn));
+        Preconditions.checkArgument(node.isReplicaOf(homeKey));
+        return andThenExecute(node, new Recover(node, new Ballot(node.uniqueNow()), txnId, txn, homeKey));
     }
 
     private static class DebugCompletionStage<T> implements CompletionStage<T>

@@ -3,10 +3,14 @@ package accord.messages;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
+import accord.api.Key;
 import accord.local.CommandStore;
+import accord.local.CommandsForKey;
 import accord.local.Node;
 import accord.local.Node.Id;
+import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.local.Command;
 import accord.txn.Dependencies;
@@ -17,18 +21,20 @@ public class PreAccept implements Request
 {
     public final TxnId txnId;
     public final Txn txn;
+    public final Key homeKey;
 
-    public PreAccept(TxnId txnId, Txn txn)
+    public PreAccept(TxnId txnId, Txn txn, Key homeKey)
     {
         this.txnId = txnId;
         this.txn = txn;
+        this.homeKey = homeKey;
     }
 
     public void process(Node node, Id from, long messageId)
     {
         node.reply(from, messageId, txn.local(node).map(instance -> {
             Command command = instance.command(txnId);
-            if (!command.witness(txn))
+            if (!command.preaccept(txn, homeKey))
                 return PreAcceptNack.INSTANCE;
             // TODO: only lookup keys relevant to this instance
             // TODO: why don't we calculate deps from the executeAt timestamp??
@@ -86,8 +92,8 @@ public class PreAccept implements Request
         public String toString()
         {
             return "PreAcceptOk{" +
-                    "witnessedAt=" + witnessedAt +
-                    ", deps=" + deps +
+                    "witnessedAt:" + witnessedAt +
+                    ", deps:" + deps +
                     '}';
         }
     }
@@ -114,7 +120,7 @@ public class PreAccept implements Request
     static Dependencies calculateDeps(CommandStore commandStore, TxnId txnId, Txn txn, Timestamp executeAt)
     {
         NavigableMap<TxnId, Txn> deps = new TreeMap<>();
-        txn.conflictsMayExecuteBefore(commandStore, executeAt).forEach(conflict -> {
+        conflictsMayExecuteBefore(commandStore, executeAt, txn.keys).forEach(conflict -> {
             if (conflict.txnId().equals(txnId))
                 return;
 
@@ -128,8 +134,22 @@ public class PreAccept implements Request
     public String toString()
     {
         return "PreAccept{" +
-               "txnId: " + txnId +
-               ", txn: " + txn +
+               "txnId:" + txnId +
+               ", txn:" + txn +
+               ", homeKey:" + homeKey +
                '}';
     }
+
+    private static Stream<Command> conflictsMayExecuteBefore(CommandStore commandStore, Timestamp mayExecuteBefore, Keys keys)
+    {
+        return keys.stream().flatMap(key -> {
+            CommandsForKey forKey = commandStore.commandsForKey(key);
+            return Stream.concat(
+            forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
+            // TODO: only return latest of Committed?
+            forKey.committedByExecuteAt.headMap(mayExecuteBefore, false).values().stream()
+            );
+        });
+    }
+
 }

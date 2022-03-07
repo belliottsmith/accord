@@ -1,6 +1,6 @@
-package accord.api;
+package accord.topology;
 
-import accord.topology.KeyRanges;
+import accord.api.Key;
 import accord.txn.Keys;
 import com.google.common.base.Preconditions;
 
@@ -188,6 +188,11 @@ public abstract class KeyRange<K extends Key<K>>
         if (this.end.compareTo(that.start) <= 0)
             return -1;
         return 0;
+    }
+
+    public boolean intersects(KeyRange<K> that)
+    {
+        return compareIntersecting(that) == 0;
     }
 
     public boolean fullyContains(KeyRange<K> that)

@@ -5,8 +5,8 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 import accord.api.Key;
-import accord.api.KeyRange;
-import accord.api.Store;
+import accord.topology.KeyRange;
+import accord.api.DataStore;
 import accord.api.Write;
 import accord.topology.KeyRanges;
 import accord.txn.Timestamp;
@@ -15,7 +15,7 @@ import accord.utils.Timestamped;
 public class MaelstromWrite extends TreeMap<Key, Value> implements Write
 {
     @Override
-    public void apply(KeyRanges ranges, Timestamp executeAt, Store store)
+    public void apply(KeyRanges ranges, Timestamp executeAt, DataStore store)
     {
         MaelstromStore s = (MaelstromStore) store;
         for (KeyRange range : ranges)

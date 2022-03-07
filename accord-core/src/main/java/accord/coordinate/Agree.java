@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 
+import accord.api.Key;
 import accord.coordinate.tracking.FastPathTracker;
 import accord.topology.Shard;
 import accord.txn.Ballot;
@@ -23,7 +24,7 @@ import accord.messages.PreAccept.PreAcceptReply;
  * Perform initial rounds of PreAccept and Accept until we have reached agreement about when we should execute.
  * If we are preempted by a recovery coordinator, we abort and let them complete (and notify us about the execution result)
  */
-class Agree extends AcceptPhase implements Callback<PreAcceptReply>
+class Agree extends Propose implements Callback<PreAcceptReply>
 {
     static class ShardTracker extends FastPathTracker.FastPathShardTracker
     {
@@ -57,13 +58,13 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
     // TODO: hybrid fast path? or at least short-circuit accept if we gain a fast-path quorum _and_ proposed one by accept
     boolean permitHybridFastPath;
 
-    private Agree(Node node, TxnId txnId, Txn txn)
+    private Agree(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        super(node, Ballot.ZERO, txnId, txn, node.cluster().forKeys(txn.keys()));
+        super(node, Ballot.ZERO, txnId, txn, homeKey, node.cluster().forKeys(txn.keys()));
         this.keys = txn.keys();
         tracker = new FastPathTracker<>(shards, ShardTracker[]::new, ShardTracker::new);
 
-        node.send(tracker.nodes(), new PreAccept(txnId, txn), this);
+        node.send(tracker.nodes(), new PreAccept(txnId, txn, homeKey), this);
     }
 
     @Override
@@ -151,8 +152,8 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         return preacceptOutcome != null;
     }
 
-    static CompletionStage<Agreed> agree(Node node, TxnId txnId, Txn txn)
+    static CompletionStage<Agreed> agree(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        return new Agree(node, txnId, txn);
+        return new Agree(node, txnId, txn, homeKey);
     }
 }

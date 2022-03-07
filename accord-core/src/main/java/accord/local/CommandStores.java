@@ -1,8 +1,10 @@
 package accord.local;
 
 import accord.api.Agent;
-import accord.api.KeyRange;
-import accord.api.Store;
+import accord.api.ProgressLog;
+import accord.api.Scheduler;
+import accord.topology.KeyRange;
+import accord.api.DataStore;
 import accord.topology.KeyRanges;
 import accord.topology.Shards;
 import accord.topology.Topology;
@@ -28,11 +30,11 @@ public class CommandStores
     private Topology localTopology = Shards.EMPTY;
     private final CommandStore[] commandStores;
 
-    public CommandStores(int num, Node.Id nodeId, Function<Timestamp, Timestamp> uniqueNow, Agent agent, Store store, CommandStore.Factory shardFactory)
+    public CommandStores(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, Function<? super CommandStore, ? extends ProgressLog> retryLogFactory, CommandStore.Factory shardFactory)
     {
         this.commandStores = new CommandStore[num];
         for (int i=0; i<num; i++)
-            commandStores[i] = shardFactory.create(i, nodeId, uniqueNow, agent, store);
+            commandStores[i] = shardFactory.create(i, node, uniqueNow, agent, store, retryLogFactory, scheduler);
     }
 
     public synchronized void shutdown()
@@ -73,6 +75,11 @@ public class CommandStores
         }
 
         return result;
+    }
+
+    public Topology topology()
+    {
+        return localTopology;
     }
 
     public synchronized void updateTopology(Topology newTopology)

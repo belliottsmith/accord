@@ -1,6 +1,7 @@
 package accord.impl.list;
 
 import accord.api.*;
+import accord.topology.KeyRange;
 import accord.topology.KeyRanges;
 import accord.txn.Keys;
 
@@ -16,7 +17,7 @@ public class ListRead implements Read
     }
 
     @Override
-    public Data read(KeyRanges ranges, Store store)
+    public Data read(KeyRanges ranges, DataStore store)
     {
         ListStore s = (ListStore)store;
         ListData result = new ListData();

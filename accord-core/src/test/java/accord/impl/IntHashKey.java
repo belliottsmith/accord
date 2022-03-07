@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.zip.CRC32C;
 
 import accord.api.Key;
-import accord.api.KeyRange;
+import accord.topology.KeyRange;
 import accord.topology.KeyRanges;
 import accord.txn.Keys;
 

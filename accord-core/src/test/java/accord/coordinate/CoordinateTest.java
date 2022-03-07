@@ -1,5 +1,8 @@
 package accord.coordinate;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+
 import accord.local.Node;
 import accord.impl.mock.MockCluster;
 import accord.api.Result;
@@ -10,6 +13,7 @@ import accord.txn.TxnId;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import static accord.Utils.id;
 import static accord.Utils.ids;
 import static accord.Utils.writeTxn;
 import static accord.impl.IntKey.keys;
@@ -26,7 +30,8 @@ public class CoordinateTest
 
             TxnId txnId = new TxnId(100, 0, node.id());
             Txn txn = writeTxn(keys(10));
-            Result result = Coordinate.execute(node, txnId, txn).toCompletableFuture().get();
+            CompletionStage<Result> stage = Coordinate.execute(node, txnId, txn, txn.keys().get(0));
+            Result result = stage.toCompletableFuture().get();
             Assertions.assertEquals(MockStore.RESULT, result);
         }
     }
@@ -41,9 +46,8 @@ public class CoordinateTest
             Node node = cluster.get(1);
             Assertions.assertNotNull(node);
 
-            TxnId txnId = new TxnId(100, 0, node.id());
             Txn txn = writeTxn(keys(10));
-            Result result = Coordinate.execute(node, txnId, txn).toCompletableFuture().get();
+            Result result = cluster.get(id(1)).coordinate(txn).toCompletableFuture().get();
             Assertions.assertEquals(MockStore.RESULT, result);
         }
     }
@@ -52,7 +56,8 @@ public class CoordinateTest
     {
         TxnId txnId = new TxnId(clock, 0, node.id());
         Txn txn = writeTxn(keys);
-        Result result = Coordinate.execute(node, txnId, txn).toCompletableFuture().get();
+        Result result = Coordinate.execute(node, txnId, txn, node.selectHomeKey(txn.keys))
+                                  .toCompletableFuture().get();
         Assertions.assertEquals(MockStore.RESULT, result);
         return txnId;
     }
