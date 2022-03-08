@@ -4,11 +4,15 @@ import accord.api.*;
 import accord.topology.KeyRanges;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.lang.Math.max;
 
 public class ListRead implements Read
 {
+    private static final Logger logger = LoggerFactory.getLogger(ListRead.class);
+
     public final Keys keys;
 
     public ListRead(Keys keys)
@@ -29,7 +33,12 @@ public class ListRead implements Read
             if (lowIdx < 0)
                 continue;
             for (int i = lowIdx, limit = range.higherKeyIndex(keys) ; i < limit ; ++i)
-                result.put(keys.get(i), s.get(keys.get(i)));
+            {
+                Key key = keys.get(i);
+                int[] data = s.get(key);
+                logger.trace("READ on {} key:{} -> {}", s.node, key, data);
+                result.put(key, data);
+            }
         }
         return result;
     }

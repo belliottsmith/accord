@@ -11,9 +11,12 @@ import accord.api.Write;
 import accord.topology.KeyRanges;
 import accord.txn.Timestamp;
 import accord.utils.Timestamped;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ListWrite extends TreeMap<Key, int[]> implements Write
 {
+    private static final Logger logger = LoggerFactory.getLogger(ListWrite.class);
     @Override
     public void apply(KeyRanges ranges, Timestamp executeAt, Store store)
     {
@@ -23,7 +26,12 @@ public class ListWrite extends TreeMap<Key, int[]> implements Write
             NavigableMap<Key, int[]> selection = subMap(range.start(), range.startInclusive(),
                                                         range.end(), range.endInclusive());
             for (Map.Entry<Key, int[]> e : selection.entrySet())
-                s.data.merge(e.getKey(), new Timestamped<>(executeAt, e.getValue()), Timestamped::merge);
+            {
+                Key key = e.getKey();
+                int[] data = e.getValue();
+                s.data.merge(key, new Timestamped<>(executeAt, data), Timestamped::merge);
+                logger.trace("WRITE on {} key:{} -> {}", s.node, key, data);
+            }
         }
     }
 }
