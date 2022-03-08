@@ -7,11 +7,11 @@ import accord.topology.Topologies;
 import accord.topology.Topology;
 import accord.txn.*;
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.utils.concurrent.AsyncPromise;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -78,7 +78,7 @@ public class EpochSync implements Runnable
         }
     }
 
-    private static class CommandSync extends CompletableFuture<Void> implements Callback<SyncAck>
+    private static class CommandSync extends AsyncPromise<Void> implements Callback<SyncAck>
     {
         private final QuorumTracker tracker;
 
@@ -94,7 +94,7 @@ public class EpochSync implements Runnable
         {
             tracker.recordSuccess(from);
             if (tracker.hasReachedQuorum())
-                complete(null);
+                setSuccess(null);
         }
 
         @Override
@@ -102,14 +102,14 @@ public class EpochSync implements Runnable
         {
             tracker.recordFailure(from);
             if (tracker.hasFailed())
-                completeExceptionally(throwable);
+                setFailure(throwable);
         }
 
         public static void sync(Node node, SyncMessage message, Topology topology)
         {
             try
             {
-                new CommandSync(node, message, topology).toCompletableFuture().get();
+                new CommandSync(node, message, topology).get();
             }
             catch (InterruptedException | ExecutionException e)
             {

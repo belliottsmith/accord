@@ -4,19 +4,17 @@ import accord.local.Node;
 import accord.messages.*;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import org.apache.cassandra.utils.concurrent.AsyncPromise;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
  * Message task that will continue sending messages to a set of nodes until all
  * nodes ack the message.
  */
-public class MessageTask extends CompletableFuture<Void> implements Runnable
+public class MessageTask extends AsyncPromise<Void> implements Runnable
 {
     public interface NodeProcess
     {
@@ -110,7 +108,7 @@ public class MessageTask extends CompletableFuture<Void> implements Runnable
             {
                 this.outstanding.remove(from);
                 if (outstanding.isEmpty())
-                    complete(null);
+                    setSuccess(null);
             }
         }
 

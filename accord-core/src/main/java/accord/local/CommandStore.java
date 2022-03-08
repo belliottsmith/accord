@@ -10,6 +10,9 @@ import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.TxnId;
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.utils.concurrent.AsyncPromise;
+import org.apache.cassandra.utils.concurrent.Future;
+import org.apache.cassandra.utils.concurrent.Promise;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -195,40 +198,38 @@ public abstract class CommandStore
             store.process(consumer);
     }
 
-    <R> void processInternal(Function<? super CommandStore, R> function, CompletableFuture<R> future)
+    <R> void processInternal(Function<? super CommandStore, R> function, Promise<R> promise)
     {
         try
         {
-            future.complete(function.apply(this));
+            promise.setSuccess(function.apply(this));
         }
         catch (Throwable e)
         {
-            future.completeExceptionally(e);
+            promise.setFailure(e);
         }
     }
 
-    void processInternal(Consumer<? super CommandStore> consumer, CompletableFuture<Void> future)
+    void processInternal(Consumer<? super CommandStore> consumer, Promise<Void> promise)
     {
         try
         {
             consumer.accept(this);
-            future.complete(null);
+            promise.setSuccess(null);
         }
         catch (Throwable e)
         {
-            future.completeExceptionally(e);
+            promise.setFailure(e);
         }
     }
 
-    public abstract <R> CompletionStage<R> process(Function<? super CommandStore, R> function);
-
-    public abstract CompletionStage<Void> process(Consumer<? super CommandStore> consumer);
+    public abstract Future<Void> process(Consumer<? super CommandStore> consumer);
 
     public void processBlocking(Consumer<? super CommandStore> consumer)
     {
         try
         {
-            process(consumer).toCompletableFuture().get();
+            process(consumer).get();
         }
         catch (InterruptedException e)
         {
@@ -257,19 +258,11 @@ public abstract class CommandStore
         }
 
         @Override
-        public synchronized <R> CompletionStage<R> process(Function<? super CommandStore, R> func)
+        public synchronized Future<Void> process(Consumer<? super CommandStore> consumer)
         {
-            CompletableFuture<R> future = new CompletableFuture<>();
-            processInternal(func, future);
-            return future;
-        }
-
-        @Override
-        public synchronized CompletionStage<Void> process(Consumer<? super CommandStore> consumer)
-        {
-            CompletableFuture<Void> future = new CompletableFuture<>();
-            processInternal(consumer, future);
-            return future;
+            AsyncPromise<Void> promise = new AsyncPromise<>();
+            processInternal(consumer, promise);
+            return promise;
         }
 
         @Override
@@ -280,23 +273,7 @@ public abstract class CommandStore
     {
         private final ExecutorService executor;
 
-        private class FunctionWrapper<R> extends CompletableFuture<R> implements Runnable
-        {
-            private final Function<? super CommandStore, R> function;
-
-            public FunctionWrapper(Function<? super CommandStore, R> function)
-            {
-                this.function = function;
-            }
-
-            @Override
-            public void run()
-            {
-                processInternal(function, this);
-            }
-        }
-
-        private class ConsumerWrapper extends CompletableFuture<Void> implements Runnable
+        private class ConsumerWrapper extends AsyncPromise<Void> implements Runnable
         {
             private final Consumer<? super CommandStore> consumer;
 
@@ -330,15 +307,7 @@ public abstract class CommandStore
         }
 
         @Override
-        public <R> CompletionStage<R> process(Function<? super CommandStore, R> function)
-        {
-            FunctionWrapper<R> future = new FunctionWrapper<>(function);
-            executor.execute(future);
-            return future;
-        }
-
-        @Override
-        public CompletionStage<Void> process(Consumer<? super CommandStore> consumer)
+        public Future<Void> process(Consumer<? super CommandStore> consumer)
         {
             ConsumerWrapper future = new ConsumerWrapper(consumer);
             executor.execute(future);
@@ -411,14 +380,14 @@ public abstract class CommandStore
         }
 
         @Override
-        <R> void processInternal(Function<? super CommandStore, R> function, CompletableFuture<R> future)
+        <R> void processInternal(Function<? super CommandStore, R> function, Promise<R> future)
         {
             assertThread();
             super.processInternal(function, future);
         }
 
         @Override
-        void processInternal(Consumer<? super CommandStore> consumer, CompletableFuture<Void> future)
+        void processInternal(Consumer<? super CommandStore> consumer, Promise<Void> future)
         {
             assertThread();
             super.processInternal(consumer, future);

@@ -3,8 +3,6 @@ package accord.coordinate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import accord.coordinate.tracking.FastPathTracker;
@@ -24,6 +22,9 @@ import accord.messages.BeginRecovery.RecoverOk;
 import accord.messages.BeginRecovery.RecoverReply;
 import accord.messages.WaitOnCommit;
 import accord.messages.WaitOnCommit.WaitOnCommitOk;
+import org.apache.cassandra.utils.concurrent.AsyncPromise;
+import org.apache.cassandra.utils.concurrent.Future;
+import org.apache.cassandra.utils.concurrent.Promise;
 
 import static accord.local.Status.Accepted;
 
@@ -31,7 +32,7 @@ import static accord.local.Status.Accepted;
 class Recover extends AcceptPhase implements Callback<RecoverReply>
 {
     private static final Object SENTINEL = new Object();
-    static class AwaitCommit extends CompletableFuture<Object> implements Callback<WaitOnCommitOk>
+    static class AwaitCommit extends AsyncPromise<Object> implements Callback<WaitOnCommitOk>
     {
         final QuorumTracker tracker;
 
@@ -49,7 +50,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
             tracker.recordSuccess(from);
             if(tracker.hasReachedQuorum())
-                complete(SENTINEL);
+                setSuccess(SENTINEL);
         }
 
         @Override
@@ -59,23 +60,23 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
             tracker.recordFailure(from);
             if (tracker.hasFailed())
-                completeExceptionally(new Timeout());
+                setFailure(new Timeout());
         }
     }
 
-    static CompletionStage<Object> awaitCommits(Node node, Dependencies waitOn)
+    static Future<Object> awaitCommits(Node node, Dependencies waitOn)
     {
         AtomicInteger remaining = new AtomicInteger(waitOn.size());
-        CompletableFuture<Object> future = new CompletableFuture<>();
+        Promise<Object> future = new AsyncPromise<>();
         for (Map.Entry<TxnId, Txn> e : waitOn)
         {
-            new AwaitCommit(node, e.getKey(), e.getValue()).whenComplete((success, failure) -> {
+            new AwaitCommit(node, e.getKey(), e.getValue()).addCallback((success, failure) -> {
                 if (future.isDone())
                     return;
                 if (success != null && remaining.decrementAndGet() == 0)
-                    future.complete(SENTINEL);
+                    future.setSuccess(SENTINEL);
                 else
-                    future.completeExceptionally(failure);
+                    future.setFailure(failure);
             });
         }
         return future;
@@ -200,7 +201,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
             earlierAcceptedNoWitness.removeAll(earlierCommittedWitness);
             if (!earlierAcceptedNoWitness.isEmpty())
             {
-                awaitCommits(node, earlierAcceptedNoWitness).whenComplete((success, failure) -> {
+                awaitCommits(node, earlierAcceptedNoWitness).addCallback((success, failure) -> {
                     if (success != null) retry();
                     else setFailure(new Timeout());
                 });

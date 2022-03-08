@@ -9,9 +9,9 @@ import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.utils.concurrent.Future;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.*;
 import java.util.stream.Stream;
@@ -234,7 +234,7 @@ public class CommandStores
                     continue;
                 try
                 {
-                    commandStores[idx].process(action).toCompletableFuture().get();
+                    commandStores[idx].process(action).get();
                     break;
                 }
                 catch (InterruptedException | ExecutionException e)
@@ -252,11 +252,11 @@ public class CommandStores
             if (i >= commandStores.length)
                 return;
 
-            List<CompletableFuture<Void>> futures = new ArrayList<>(commandStores.length - i);
+            List<Future<Void>> futures = new ArrayList<>(commandStores.length - i);
             for (; i< commandStores.length; i++)
             {
                 if (predicate.test(i))
-                    futures.add(commandStores[i].process(action).toCompletableFuture());
+                    futures.add(commandStores[i].process(action));
             }
 
             try
