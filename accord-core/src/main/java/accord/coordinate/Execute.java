@@ -86,7 +86,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
 
         if (!reply.isOK())
         {
-            setFailure(new Preempted());
+            tryFailure(new Preempted());
             return;
         }
 
@@ -120,7 +120,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         }
         else if (readTracker.hasFailed())
         {
-            setFailure(throwable);
+            tryFailure(throwable);
         }
     }
 

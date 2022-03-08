@@ -1,5 +1,6 @@
 package accord.impl.basic;
 
+import accord.impl.mock.Network;
 import accord.local.Node.Id;
 import accord.messages.Message;
 import accord.messages.Reply;
@@ -46,6 +47,8 @@ public class Packet implements Pending, ReplyContext
 
     public static long getMessageId(ReplyContext context)
     {
+        if (context instanceof Network.MessageId)
+            return ((Network.MessageId) context).msgId;
         return ((Packet) context).requestId;
     }
 }

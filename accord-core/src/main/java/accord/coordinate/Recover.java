@@ -60,7 +60,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
             tracker.recordFailure(from);
             if (tracker.hasFailed())
-                setFailure(new Timeout());
+                tryFailure(new Timeout());
         }
     }
 
@@ -76,7 +76,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
                 if (success != null && remaining.decrementAndGet() == 0)
                     future.setSuccess(SENTINEL);
                 else
-                    future.setFailure(failure);
+                    future.tryFailure(failure);
             });
         }
         return future;
@@ -132,7 +132,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         if (!response.isOK())
         {
-            setFailure(new Preempted());
+            tryFailure(new Preempted());
             return;
         }
 
@@ -203,7 +203,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
             {
                 awaitCommits(node, earlierAcceptedNoWitness).addCallback((success, failure) -> {
                     if (success != null) retry();
-                    else setFailure(new Timeout());
+                    else tryFailure(new Timeout());
                 });
                 return;
             }
@@ -217,7 +217,7 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
     {
         new Recover(node, ballot, txnId, txn, node.topology().forEpoch(txn, txnId.epoch)).addCallback((success, failure) -> {
             if (success != null) setSuccess(success);
-            else setFailure(failure);
+            else tryFailure(failure);
         });
     }
 
@@ -229,6 +229,6 @@ class Recover extends AcceptPhase implements Callback<RecoverReply>
 
         tracker.recordFailure(from);
         if (tracker.hasFailed())
-            setFailure(new Timeout());
+            tryFailure(new Timeout());
     }
 }

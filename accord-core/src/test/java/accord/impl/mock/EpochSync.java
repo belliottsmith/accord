@@ -102,7 +102,7 @@ public class EpochSync implements Runnable
         {
             tracker.recordFailure(from);
             if (tracker.hasFailed())
-                setFailure(throwable);
+                tryFailure(throwable);
         }
 
         public static void sync(Node node, SyncMessage message, Topology topology)

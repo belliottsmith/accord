@@ -150,7 +150,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
 
         tracker.recordFailure(from);
         if (tracker.hasFailed())
-            setFailure(new Timeout());
+            tryFailure(new Timeout());
 
         // if no other responses are expected and the slow quorum has been satisfied, proceed
         if (shouldSlowPathAccept())
@@ -184,7 +184,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         if (!receive.isOK())
         {
             // we've been preempted by a recovery coordinator; defer to it, and wait to hear any result
-            setFailure(new Preempted());
+            tryFailure(new Preempted());
             return;
         }
 

@@ -55,7 +55,7 @@ class AcceptPhase extends AsyncPromise<Agreed>
             {
                 acceptTracker.recordFailure(from);
                 if (acceptTracker.hasFailed())
-                    setFailure(new Timeout());
+                    tryFailure(new Timeout());
             }
         });
     }
@@ -67,7 +67,7 @@ class AcceptPhase extends AsyncPromise<Agreed>
 
         if (!reply.isOK())
         {
-            setFailure(new Preempted());
+            tryFailure(new Preempted());
             return;
         }
 

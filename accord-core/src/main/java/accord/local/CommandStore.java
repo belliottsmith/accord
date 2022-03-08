@@ -206,7 +206,7 @@ public abstract class CommandStore
         }
         catch (Throwable e)
         {
-            promise.setFailure(e);
+            promise.tryFailure(e);
         }
     }
 
@@ -219,7 +219,7 @@ public abstract class CommandStore
         }
         catch (Throwable e)
         {
-            promise.setFailure(e);
+            promise.tryFailure(e);
         }
     }
 
