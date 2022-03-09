@@ -88,15 +88,33 @@ public class Txn
         return "read:" + read.toString() + (update != null ? ", update:" + update : "");
     }
 
-    public Data read(KeyRanges range, Store store, Timestamp executeAt)
+    public Data read(KeyRanges range, Keys keyScope, Store store, Timestamp executeAt)
     {
-        return read.read(range, executeAt, store);
+        return keyScope.accumulate(range, new Keys.NonTerminatingKeyAccumulator<>() {
+            @Override
+            public Data accumulate(Key key, Data accumulate)
+            {
+
+                Data result = read.read(key, executeAt, store);
+                return accumulate != null ? accumulate.merge(result) : result;
+            }
+        });
     }
 
-    public Data read(Command command)
+    public Data read(Command command, Keys keyScope)
     {
-        CommandStore commandStore = command.commandStore;
-        return read(commandStore.ranges(), commandStore.store(), command.executeAt());
+        return keyScope.accumulate(command.commandStore.ranges(), new Keys.NonTerminatingKeyAccumulator<>() {
+            @Override
+            public Data accumulate(Key key, Data accumulate)
+            {
+                CommandStore commandStore = command.commandStore;
+                if (!commandStore.hashIntersects(key))
+                    return accumulate;
+
+                Data result = read.read(key, command.executeAt(), commandStore.store());
+                return accumulate != null ? accumulate.merge(result) : result;
+            }
+        });
     }
 
     public Timestamp maxConflict(CommandStore commandStore)

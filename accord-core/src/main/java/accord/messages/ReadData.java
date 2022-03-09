@@ -11,6 +11,7 @@ import accord.local.Node.Id;
 import accord.api.Data;
 import accord.topology.KeyRanges;
 import accord.topology.Topologies;
+import accord.txn.Keys;
 import accord.txn.Txn;
 import accord.txn.TxnId;
 import accord.txn.Timestamp;
@@ -24,6 +25,7 @@ public class ReadData extends TxnRequest
         final TxnId txnId;
         final Node node;
         final Node.Id replyToNode;
+        final Keys keyScope;
         final ReplyContext replyContext;
 
         Data data;
@@ -31,11 +33,12 @@ public class ReadData extends TxnRequest
         Set<CommandStore> waitingOn;
         Scheduled waitingOnReporter;
 
-        LocalRead(TxnId txnId, Node node, Id replyToNode, ReplyContext replyContext)
+        LocalRead(TxnId txnId, Node node, Id replyToNode, Keys keyScope, ReplyContext replyContext)
         {
             this.txnId = txnId;
             this.node = node;
             this.replyToNode = replyToNode;
+            this.keyScope = keyScope;
             this.replyContext = replyContext;
             // TODO: this is messy, we want a complete separate liveness mechanism that ensures progress for all transactions
             this.waitingOnReporter = node.scheduler().once(new ReportWaiting(), 1L, TimeUnit.SECONDS);
@@ -88,7 +91,7 @@ public class ReadData extends TxnRequest
         private void read(Command command)
         {
             // TODO: threading/futures (don't want to perform expensive reads within this mutually exclusive context)
-            Data next = command.txn().read(command);
+            Data next = command.txn().read(command, keyScope);
             data = data == null ? next : data.merge(next);
 
             waitingOn.remove(command.commandStore);
@@ -168,7 +171,7 @@ public class ReadData extends TxnRequest
 
     public void process(Node node, Node.Id from, ReplyContext replyContext)
     {
-        new LocalRead(txnId, node, from, replyContext).setup(txnId, txn, scope());
+        new LocalRead(txnId, node, from, scope().keys(), replyContext).setup(txnId, txn, scope());
     }
 
     @Override

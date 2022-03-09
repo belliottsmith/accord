@@ -187,13 +187,18 @@ public abstract class CommandStore
         return index;
     }
 
+    public boolean hashIntersects(Key key)
+    {
+        return CommandStores.keyIndex(key, numShards) == index;
+    }
+
     public boolean intersects(Keys keys)
     {
         Keys.AbstractTerminatingKeyAccumulator<Void> accumulator = new Keys.AbstractTerminatingKeyAccumulator<>() {
             @Override
             public boolean shouldTerminate(Key key)
             {
-                return CommandStores.keyIndex(key, numShards) == index;
+                return hashIntersects(key);
             }
         };
         keys.accumulate(ranges, accumulator);

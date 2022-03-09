@@ -231,6 +231,15 @@ public class Keys implements Iterable<Key>
         boolean isDone();
     }
 
+    public static abstract class NonTerminatingKeyAccumulator<V> implements KeyAccumulator<V>
+    {
+        @Override
+        public boolean isDone()
+        {
+            return false;
+        }
+    }
+
     public static abstract class AbstractTerminatingKeyAccumulator<V> implements KeyAccumulator<V>
     {
         private boolean isDone = false;
