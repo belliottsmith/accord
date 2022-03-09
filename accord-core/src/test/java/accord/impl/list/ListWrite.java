@@ -17,7 +17,9 @@ public class ListWrite extends TreeMap<Key, int[]> implements Write
     public void apply(Key key, Timestamp executeAt, Store store)
     {
         ListStore s = (ListStore) store;
-        int[] data = s.get(key);
+        if (!containsKey(key))
+            return;
+        int[] data = get(key);
         s.data.merge(key, new Timestamped<>(executeAt, data), Timestamped::merge);
         logger.trace("WRITE on {} at {} key:{} -> {}", s.node, executeAt, key, data);
     }
