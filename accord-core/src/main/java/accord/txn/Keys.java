@@ -66,6 +66,50 @@ public class Keys implements Iterable<Key>
         return new Keys(selection);
     }
 
+    public Keys merge(Keys that)
+    {
+        int thisIdx = 0;
+        int thatIdx = 0;
+        Key[] result = new Key[this.size() + that.size()];
+        int resultSize = 0;
+
+        while (thisIdx < this.size() && thatIdx < that.size())
+        {
+            Key thisKey = this.keys[thisIdx];
+            Key thatKey = that.keys[thatIdx];
+            int cmp = thisKey.compareTo(thatKey);
+            Key minKey;
+            if (cmp == 0)
+            {
+                minKey = thisKey;
+                thisIdx++;
+                thatIdx++;
+            }
+            else if (cmp < 0)
+            {
+                minKey = thisKey;
+                thisIdx++;
+            }
+            else
+            {
+                minKey = thatKey;
+                thatIdx++;
+            }
+            result[resultSize++] = minKey;
+        }
+
+        while (thisIdx < this.size())
+            result[resultSize++] = this.keys[thisIdx++];
+
+        while (thatIdx < that.size())
+            result[resultSize++] = that.keys[thatIdx++];
+
+        if (resultSize < result.length)
+            result = Arrays.copyOf(result, resultSize);
+
+        return new Keys(result);
+    }
+
     public boolean isEmpty()
     {
         return keys.length == 0;
