@@ -36,7 +36,7 @@ public class ListRead implements Read
             {
                 Key key = keys.get(i);
                 int[] data = s.get(key);
-                logger.trace("READ on {} key:{} -> {}", s.node, key, data);
+                logger.trace("READ on {} at {} key:{} -> {}", s.node, executeAt, key, data);
                 result.put(key, data);
             }
         }

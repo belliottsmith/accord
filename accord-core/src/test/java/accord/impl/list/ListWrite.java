@@ -30,7 +30,7 @@ public class ListWrite extends TreeMap<Key, int[]> implements Write
                 Key key = e.getKey();
                 int[] data = e.getValue();
                 s.data.merge(key, new Timestamped<>(executeAt, data), Timestamped::merge);
-                logger.trace("WRITE on {} key:{} -> {}", s.node, key, data);
+                logger.trace("WRITE on {} at {} key:{} -> {}", s.node, executeAt, key, data);
             }
         }
     }
