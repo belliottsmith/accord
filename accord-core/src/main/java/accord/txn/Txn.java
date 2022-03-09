@@ -88,32 +88,15 @@ public class Txn
         return "read:" + read.toString() + (update != null ? ", update:" + update : "");
     }
 
-    public Data read(KeyRanges range, Keys keyScope, Store store, Timestamp executeAt)
-    {
-        return keyScope.accumulate(range, new Keys.NonTerminatingKeyAccumulator<>() {
-            @Override
-            public Data accumulate(Key key, Data accumulate)
-            {
-
-                Data result = read.read(key, executeAt, store);
-                return accumulate != null ? accumulate.merge(result) : result;
-            }
-        });
-    }
-
     public Data read(Command command, Keys keyScope)
     {
-        return keyScope.accumulate(command.commandStore.ranges(), new Keys.NonTerminatingKeyAccumulator<>() {
-            @Override
-            public Data accumulate(Key key, Data accumulate)
-            {
-                CommandStore commandStore = command.commandStore;
-                if (!commandStore.hashIntersects(key))
-                    return accumulate;
+        return keyScope.accumulate(command.commandStore.ranges(), (key, accumulate) -> {
+            CommandStore commandStore = command.commandStore;
+            if (!commandStore.hashIntersects(key))
+                return accumulate;
 
-                Data result = read.read(key, command.executeAt(), commandStore.store());
-                return accumulate != null ? accumulate.merge(result) : result;
-            }
+            Data result = read.read(key, command.executeAt(), commandStore.store());
+            return accumulate != null ? accumulate.merge(result) : result;
         });
     }
 

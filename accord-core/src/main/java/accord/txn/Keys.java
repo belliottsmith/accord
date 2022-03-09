@@ -228,36 +228,9 @@ public class Keys implements Iterable<Key>
     public interface KeyAccumulator<V>
     {
         V accumulate(Key key, V value);
-        boolean isDone();
-    }
-
-    public static abstract class NonTerminatingKeyAccumulator<V> implements KeyAccumulator<V>
-    {
-        @Override
-        public boolean isDone()
+        default boolean isDone()
         {
             return false;
-        }
-    }
-
-    public static abstract class AbstractTerminatingKeyAccumulator<V> implements KeyAccumulator<V>
-    {
-        private boolean isDone = false;
-
-        public abstract boolean shouldTerminate(Key key);
-
-        @Override
-        public V accumulate(Key key, V value)
-        {
-            Preconditions.checkState(!isDone);
-            isDone = shouldTerminate(key);
-            return value;
-        }
-
-        @Override
-        public boolean isDone()
-        {
-            return isDone;
         }
     }
 
@@ -267,8 +240,6 @@ public class Keys implements Iterable<Key>
      */
     public <V> V accumulate(KeyRanges ranges, KeyAccumulator<V> accumulator, V value)
     {
-        int matches = 0;
-
         int keyLB = 0;
         int keyHB = size();
         int rangeLB = 0;
@@ -313,5 +284,37 @@ public class Keys implements Iterable<Key>
     public <V> V accumulate(KeyRanges ranges, KeyAccumulator<V> accumulator)
     {
         return accumulate(ranges, accumulator, null);
+    }
+
+    private static class TerminatingKeyAccumulator<V> implements KeyAccumulator<V>
+    {
+        private boolean isDone = false;
+        private final Predicate<Key> predicate;
+
+        public TerminatingKeyAccumulator(Predicate<Key> predicate)
+        {
+            this.predicate = predicate;
+        }
+
+        @Override
+        final public V accumulate(Key key, V value)
+        {
+            Preconditions.checkState(!isDone);
+            isDone = predicate.test(key);
+            return value;
+        }
+
+        @Override
+        final public boolean isDone()
+        {
+            return isDone;
+        }
+    }
+
+    public boolean any(KeyRanges ranges, Predicate<Key> predicate)
+    {
+        TerminatingKeyAccumulator<Void> accumulator = new TerminatingKeyAccumulator<>(predicate);
+        accumulate(ranges, accumulator, null);
+        return accumulator.isDone();
     }
 }

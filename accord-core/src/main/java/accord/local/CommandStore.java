@@ -194,15 +194,7 @@ public abstract class CommandStore
 
     public boolean intersects(Keys keys)
     {
-        Keys.AbstractTerminatingKeyAccumulator<Void> accumulator = new Keys.AbstractTerminatingKeyAccumulator<>() {
-            @Override
-            public boolean shouldTerminate(Key key)
-            {
-                return hashIntersects(key);
-            }
-        };
-        keys.accumulate(ranges, accumulator);
-        return accumulator.isDone();
+        return keys.any(ranges, this::hashIntersects);
     }
 
     public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)
