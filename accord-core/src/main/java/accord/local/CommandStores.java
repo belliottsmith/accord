@@ -33,17 +33,32 @@ public class CommandStores
             this.ranges = ranges;
         }
 
-        private boolean updateBitset(Keys keys, BitSet bitSet)
+        private static class AccumulatingBitset extends BitSet implements Keys.KeyAccumulator<Keys>
         {
-            int matches = bitSet.cardinality();
-            matches += keys.countIntersecting(ranges, key -> {
-                int idx = keyIndex(key, stores.length);
-                if (bitSet.get(idx))
-                    return false;
-                bitSet.set(idx);
-                return true;
-            }, stores.length - matches);
-            return matches == stores.length;
+            final int numStores;
+            boolean isDone = false;
+            public AccumulatingBitset(int numStores)
+            {
+                super(numStores);
+                this.numStores = numStores;
+            }
+
+            @Override
+            public Keys accumulate(Key key, Keys keys)
+            {
+                int idx = keyIndex(key, numStores);
+                if (get(idx))
+                    return keys;
+                set(idx);
+                isDone = cardinality() == numStores;
+                return keys;
+            }
+
+            @Override
+            public boolean isDone()
+            {
+                return isDone;
+            }
         }
 
         public Stream<CommandStore> stream()
@@ -53,8 +68,8 @@ public class CommandStores
 
         public Stream<CommandStore> stream(Keys keys)
         {
-            BitSet bitSet = new BitSet(stores.length);
-            updateBitset(keys, bitSet);
+            AccumulatingBitset bitSet = new AccumulatingBitset(stores.length);
+            keys.accumulate(ranges, bitSet, keys);
             if (bitSet.cardinality() == 0)
                 return null;
             return StreamSupport.stream(new ShardSpliterator(stores, bitSet::get), false);
@@ -62,10 +77,12 @@ public class CommandStores
 
         public Stream<CommandStore> stream(TxnRequest.Scope scope)
         {
-            BitSet bitSet = new BitSet(stores.length);
+            AccumulatingBitset bitSet = new AccumulatingBitset(stores.length);
             for (int i=0, mi=scope.size(); i<mi; i++)
             {
-                if (updateBitset(scope.get(i).keys, bitSet))
+                Keys keys = scope.get(i).keys;
+                keys.accumulate(ranges, bitSet, keys);
+                if (bitSet.isDone)
                     break;
             }
             if (bitSet.cardinality() == 0)

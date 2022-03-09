@@ -8,6 +8,7 @@ import java.util.stream.Stream;
 import accord.api.Key;
 import accord.api.KeyRange;
 import accord.topology.KeyRanges;
+import com.google.common.base.Preconditions;
 
 @SuppressWarnings("rawtypes")
 public class Keys implements Iterable<Key>
@@ -224,11 +225,38 @@ public class Keys implements Iterable<Key>
         return result != null ? new Keys(result) : EMPTY;
     }
 
+    public interface KeyAccumulator<V>
+    {
+        V accumulate(Key key, V value);
+        boolean isDone();
+    }
+
+    public static abstract class AbstractTerminatingKeyAccumulator<V> implements KeyAccumulator<V>
+    {
+        private boolean isDone = false;
+
+        public abstract boolean shouldTerminate(Key key);
+
+        @Override
+        public V accumulate(Key key, V value)
+        {
+            Preconditions.checkState(!isDone);
+            isDone = shouldTerminate(key);
+            return value;
+        }
+
+        @Override
+        public boolean isDone()
+        {
+            return isDone;
+        }
+    }
+
     /**
      * Count the number of keys matching the predicate and intersecting with the given ranges.
      * If terminateAfter is greater than 0, the method will return once terminateAfter matches are encountered
      */
-    public int countIntersecting(KeyRanges ranges, Predicate<Key> predicate, int terminateAfter)
+    public <V> V accumulate(KeyRanges ranges, KeyAccumulator<V> accumulator, V value)
     {
         int matches = 0;
 
@@ -257,13 +285,9 @@ public class Keys implements Iterable<Key>
 
                 for (int i=keyLB; i<highKey; i++)
                 {
-                    if (!predicate.test(keys[i]))
-                        continue;
-
-                    matches++;
-
-                    if (terminateAfter > 0 && matches == terminateAfter)
-                        return matches;
+                    value = accumulator.accumulate(keys[i], value);
+                    if (accumulator.isDone())
+                        return value;
                 }
 
                 keyLB = highKey;
@@ -274,6 +298,11 @@ public class Keys implements Iterable<Key>
                 keyLB = -1 - keyLB;
         }
 
-        return matches;
+        return value;
+    }
+
+    public <V> V accumulate(KeyRanges ranges, KeyAccumulator<V> accumulator)
+    {
+        return accumulate(ranges, accumulator, null);
     }
 }

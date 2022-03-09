@@ -189,7 +189,15 @@ public abstract class CommandStore
 
     public boolean intersects(Keys keys)
     {
-        return keys.countIntersecting(ranges, key -> CommandStores.keyIndex(key, numShards) == index, 1) > 0;
+        Keys.AbstractTerminatingKeyAccumulator<Void> accumulator = new Keys.AbstractTerminatingKeyAccumulator<>() {
+            @Override
+            public boolean shouldTerminate(Key key)
+            {
+                return CommandStores.keyIndex(key, numShards) == index;
+            }
+        };
+        keys.accumulate(ranges, accumulator);
+        return accumulator.isDone();
     }
 
     public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)
