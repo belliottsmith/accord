@@ -123,16 +123,6 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
             sendNext();
         }
 
-        void onComplete(Runnable runnable)
-        {
-            onComplete.add(runnable);
-        }
-
-        synchronized void fireCallbacks()
-        {
-            onComplete.forEach(Runnable::run);
-        }
-
         synchronized void sendNext()
         {
             if (candidates.isEmpty())
