@@ -156,7 +156,10 @@ public class CommandStores
     }
 
     private final Node.Id node;
-    private final BiFunction<Integer, KeyRanges, CommandStore> shardFactory;
+    private final Function<Timestamp, Timestamp> uniqueNow;
+    private final Agent agent;
+    private final Store store;
+    private final CommandStore.Factory shardFactory;
     private final int numShards;
     private volatile StoreGroups groups = StoreGroups.EMPTY;
 
@@ -164,7 +167,15 @@ public class CommandStores
     {
         this.node = node;
         this.numShards = num;
-        this.shardFactory = (idx, ranges) -> shardFactory.create(idx, numShards, node, uniqueNow, agent, store, ranges, this::getLocalTopology);
+        this.uniqueNow = uniqueNow;
+        this.agent = agent;
+        this.store = store;
+        this.shardFactory = shardFactory;
+    }
+
+    private CommandStore createCommandStore(int generation, int index, KeyRanges ranges)
+    {
+        return shardFactory.create(generation, index, numShards, node, uniqueNow, agent, store, ranges, this::getLocalTopology);
     }
 
     private Topology getLocalTopology()
@@ -212,12 +223,13 @@ public class CommandStores
             return;
         }
 
+        int newGeneration = current.groups.length;
         StoreGroup[] newGroups = new StoreGroup[current.groups.length + 1];
         CommandStore[] newStores = new CommandStore[numShards];
         System.arraycopy(current.groups, 0, newGroups, 0, current.groups.length);
 
         for (int i=0; i<numShards; i++)
-            newStores[i] = shardFactory.apply(i, added);
+            newStores[i] = createCommandStore(newGeneration, i, added);
 
         newGroups[current.groups.length] = new StoreGroup(newStores, added);
 

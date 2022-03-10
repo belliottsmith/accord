@@ -28,7 +28,8 @@ public abstract class CommandStore
 {
     public interface Factory
     {
-        CommandStore create(int index,
+        CommandStore create(int generation,
+                            int index,
                             int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
@@ -41,6 +42,7 @@ public abstract class CommandStore
         Factory SINGLE_THREAD_DEBUG = SingleThreadDebug::new;
     }
 
+    private final int generation;
     private final int index;
     private final int numShards;
     private final Node.Id nodeId;
@@ -53,7 +55,8 @@ public abstract class CommandStore
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
 
-    public CommandStore(int index,
+    public CommandStore(int generation,
+                        int index,
                         int numShards,
                         Node.Id nodeId,
                         Function<Timestamp, Timestamp> uniqueNow,
@@ -62,6 +65,7 @@ public abstract class CommandStore
                         KeyRanges ranges,
                         Supplier<Topology> localTopologySupplier)
     {
+        this.generation = generation;
         this.index = index;
         this.numShards = numShards;
         this.nodeId = nodeId;
@@ -250,7 +254,8 @@ public abstract class CommandStore
 
     public static class Synchronized extends CommandStore
     {
-        public Synchronized(int index,
+        public Synchronized(int generation,
+                            int index,
                             int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
@@ -259,7 +264,7 @@ public abstract class CommandStore
                             KeyRanges ranges,
                             Supplier<Topology> localTopologySupplier)
         {
-            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
+            super(generation, index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
         }
 
         @Override
@@ -294,7 +299,8 @@ public abstract class CommandStore
             }
         }
 
-        public SingleThread(int index,
+        public SingleThread(int generation,
+                            int index,
                             int numShards,
                             Node.Id nodeId,
                             Function<Timestamp, Timestamp> uniqueNow,
@@ -303,7 +309,7 @@ public abstract class CommandStore
                             KeyRanges ranges,
                             Supplier<Topology> localTopologySupplier)
         {
-            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
+            super(generation, index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
                 thread.setName(CommandStore.class.getSimpleName() + '[' + nodeId + ':' + index + ']');
@@ -330,7 +336,8 @@ public abstract class CommandStore
     {
         private final AtomicReference<Thread> expectedThread = new AtomicReference<>();
 
-        public SingleThreadDebug(int index,
+        public SingleThreadDebug(int generation,
+                                 int index,
                                  int numShards,
                                  Node.Id nodeId,
                                  Function<Timestamp, Timestamp> uniqueNow,
@@ -339,7 +346,7 @@ public abstract class CommandStore
                                  KeyRanges ranges,
                                  Supplier<Topology> localTopologySupplier)
         {
-            super(index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
+            super(generation, index, numShards, nodeId, uniqueNow, agent, store, ranges, localTopologySupplier);
         }
 
         private void assertThread()

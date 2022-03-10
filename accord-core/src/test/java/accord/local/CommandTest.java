@@ -50,6 +50,7 @@ public class CommandTest
     private static CommandStore createStore(CommandStoreSupport storeSupport)
     {
         return new CommandStore.Synchronized(0,
+                                             0,
                                              1,
                                              ID1,
                                              storeSupport.uniqueNow,
