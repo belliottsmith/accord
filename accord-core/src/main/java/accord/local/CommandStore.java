@@ -128,6 +128,7 @@ public abstract class CommandStore
 
     void purgeRanges(KeyRanges removed)
     {
+        KeyRanges postPurge = ranges.difference(removed);
         for (KeyRange range : removed)
         {
             NavigableMap<Key, CommandsForKey> subMap = commandsForKey.subMap(range.start(), range.startInclusive(), range.end(), range.endInclusive());
@@ -139,10 +140,11 @@ public abstract class CommandStore
                 if (forKey != null)
                 {
                     for (Command command : forKey)
-                        if (command.txn() != null && !ranges.intersects(command.txn().keys))
+                        if (command.txn() != null && !postPurge.intersects(command.txn().keys))
                             commands.remove(command.txnId());
                 }
-                keyIterator.remove();
+                if (forKey.isEmpty())
+                    keyIterator.remove();
             }
         }
     }
