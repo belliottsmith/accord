@@ -214,8 +214,7 @@ public class CommandStores
             return;
 
         Topology local = cluster.forNode(node);
-        KeyRanges currentRanges = Arrays.stream(current.groups).map(group -> group.ranges).reduce(KeyRanges.EMPTY, (l, r) -> l.union(r)).mergeTouching();
-        KeyRanges added = local.ranges().difference(currentRanges);
+        KeyRanges added = local.ranges().difference(current.local.ranges());
 
         if (added.isEmpty())
         {
