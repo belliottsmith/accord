@@ -211,6 +211,10 @@ public class TopologyUpdate
                     continue;
 
                 Set<Node.Id> newNodes = Sets.difference(nextShard.nodeSet, syncShard.nodeSet);
+
+                if (newNodes.isEmpty())
+                    continue;
+
                 KeyRanges ranges = KeyRanges.singleton(intersection);
                 for (long epoch=1; epoch<syncEpoch; epoch++)
                     messageStream = Stream.concat(messageStream, syncEpochCommands(node,
