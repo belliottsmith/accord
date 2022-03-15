@@ -25,7 +25,7 @@ public class Writes
             if (commandStore.hashIntersects(key))
                 write.apply(key, executeAt, commandStore.store());
             return accumulate;
-        });
+        }, null);
     }
 
     @Override

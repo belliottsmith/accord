@@ -57,7 +57,7 @@ public class TopologyUpdate
         }
         public void process(Node node)
         {
-            node.local(txn.keys()).forEach(commandStore -> {
+            node.forEachLocal(txn, commandStore -> {
                 switch (status)
                 {
                     case PreAccepted:
@@ -122,9 +122,9 @@ public class TopologyUpdate
         Map<TxnId, CommandSync> syncMessages = new ConcurrentHashMap<>();
         Consumer<Command> commandConsumer = command -> syncMessages.put(command.txnId(), new CommandSync(command));
         if (committedOnly)
-            node.local().forEach(commandStore -> commandStore.forCommittedInEpoch(ranges, epoch, commandConsumer));
+            node.forEachLocal(commandStore -> commandStore.forCommittedInEpoch(ranges, epoch, commandConsumer));
         else
-            node.local().forEach(commandStore -> commandStore.forEpochCommands(ranges, epoch, commandConsumer));
+            node.forEachLocal(commandStore -> commandStore.forEpochCommands(ranges, epoch, commandConsumer));
         return syncMessages.values().stream().map(cmd -> MessageTask.of(node, recipients.apply(cmd), "Sync:" + cmd.txnId + ':' + epoch + ':' + forEpoch, cmd::process));
     }
 

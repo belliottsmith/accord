@@ -1,5 +1,6 @@
 package accord.messages;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -78,7 +79,7 @@ public class WaitOnCommit extends TxnRequest
 
         synchronized void setup(Keys keys)
         {
-            List<CommandStore> instances = node.local(keys).collect(Collectors.toList());
+            List<CommandStore> instances = node.collectLocal(keys, ArrayList::new);
             waitingOn.set(instances.size());
             instances.forEach(instance -> instance.processBlocking(this::process));
         }
