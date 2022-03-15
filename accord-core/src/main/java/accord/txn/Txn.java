@@ -97,7 +97,7 @@ public class Txn
 
             Data result = read.read(key, command.executeAt(), commandStore.store());
             return accumulate != null ? accumulate.merge(result) : result;
-        });
+        }, null);
     }
 
     public Timestamp maxConflict(CommandStore commandStore)

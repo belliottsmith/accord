@@ -1,8 +1,14 @@
 package accord;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import accord.api.Key;
 import accord.api.KeyRange;
 import accord.impl.IntKey;
 import accord.topology.KeyRanges;
+import accord.txn.Keys;
+
 import org.junit.jupiter.api.Test;
 
 import static accord.impl.IntKey.keys;
@@ -19,6 +25,7 @@ public class KeysTest
     {
         return new KeyRanges(ranges);
     }
+
     @Test
     void intersectionTest()
     {
@@ -42,5 +49,28 @@ public class KeysTest
                      keys(0, 1).merge(keys(2, 3, 4)));
         assertEquals(keys(0, 1, 2, 3, 4),
                      keys(0, 2, 4).merge(keys(1, 3)));
+    }
+
+    void foldlTest()
+    {
+        List<Key> keys = new ArrayList<>();
+        long result = keys(150, 250, 350, 450, 550).foldl(ranges(r(200, 400)), (key, p, v) -> { keys.add(key); return v * p + 1; }, 15, 0, -1);
+        assertEquals(16, result);
+        assertEquals(keys(250, 350), new Keys(keys));
+
+        keys.clear();
+        result = keys(150, 250, 350, 450, 550).foldl(ranges(r(0, 500)), (key, p, v) -> { keys.add(key); return v * p + 1; }, 15, 0, -1);
+        assertEquals(3616, result);
+        assertEquals(keys(150, 250, 350, 450), new Keys(keys));
+
+        keys.clear();
+        result = keys(150, 250, 350, 450, 550).foldl(ranges(r(500, 1000)), (key, p, v) -> { keys.add(key); return v * p + 1; }, 15, 0, -1);
+        assertEquals(1, result);
+        assertEquals(keys(550), new Keys(keys));
+
+        keys.clear();
+        result = keys(150, 250, 350, 450, 550).foldl(ranges(r(0, 20), r(100, 140), r(149, 151), r(560, 2000)), (key, p, v) -> { keys.add(key); return v * p + 1; }, 15, 0, -1);
+        assertEquals(1, result);
+        assertEquals(keys(150), new Keys(keys));
     }
 }

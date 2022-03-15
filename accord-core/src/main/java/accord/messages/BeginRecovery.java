@@ -43,7 +43,7 @@ public class BeginRecovery extends TxnRequest
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        RecoverReply reply = node.local(scope()).map(instance -> {
+        RecoverReply reply = node.mapReduceLocal(scope(), instance -> {
             Command command = instance.command(txnId);
 
             if (!command.recover(txn, ballot))
@@ -84,7 +84,7 @@ public class BeginRecovery extends TxnRequest
                                               .collect(Dependencies::new, Dependencies::add, Dependencies::addAll);
             }
             return new RecoverOk(txnId, command.status(), command.accepted(), command.executeAt(), deps, earlierCommittedWitness, earlierAcceptedNoWitness, rejectsFastPath, command.writes(), command.result());
-        }).reduce((r1, r2) -> {
+        }, (r1, r2) -> {
             if (!r1.isOK()) return r1;
             if (!r2.isOK()) return r2;
             RecoverOk ok1 = (RecoverOk) r1;
@@ -140,7 +140,7 @@ public class BeginRecovery extends TxnRequest
                     ok1.earlierAcceptedNoWitness,
                     ok1.rejectsFastPath | ok2.rejectsFastPath,
                     ok1.writes, ok1.result);
-        }).orElseThrow();
+        });
 
         node.reply(replyToNode, replyContext, reply);
         if (reply instanceof RecoverOk && ((RecoverOk) reply).status == Applied)

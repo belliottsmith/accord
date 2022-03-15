@@ -5,6 +5,7 @@ import accord.topology.KeyRanges;
 import accord.topology.Topologies;
 import accord.topology.Topology;
 import accord.txn.Keys;
+import accord.txn.Keys.FoldKeysToLong;
 import accord.txn.Txn;
 
 import java.util.ArrayList;
@@ -123,15 +124,15 @@ public abstract class TxnRequest implements Request
             return maxEpoch;
         }
 
-        public boolean intersects(KeyRanges ranges)
+        public long foldl(KeyRanges ranges, FoldKeysToLong fold, long param, long initialValue, long terminalValue)
         {
             for (KeysForEpoch keysForEpoch : this.epochs)
             {
-                if (ranges.intersects(keysForEpoch.keys))
-                    return true;
+                initialValue = keysForEpoch.keys.foldl(ranges, fold, param, initialValue, terminalValue);
+                if (terminalValue == initialValue)
+                    break;
             }
-
-            return false;
+            return initialValue;
         }
 
         public Keys keys()
