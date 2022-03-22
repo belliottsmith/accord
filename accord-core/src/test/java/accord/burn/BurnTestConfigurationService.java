@@ -266,10 +266,10 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
         }
         logger.trace("Epoch {} received by {}", topology.epoch(), node);
 
+        epochs.receive(topology);
         for (Listener listener : listeners)
             listener.onTopologyUpdate(topology);
 
-        epochs.receive(topology);
         FetchTopology fetch = pendingEpochs.remove(topology.epoch());
         if (fetch == null)
             return;
