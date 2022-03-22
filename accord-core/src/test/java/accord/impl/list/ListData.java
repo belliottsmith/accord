@@ -10,7 +10,8 @@ public class ListData extends TreeMap<Key, int[]> implements Data
     @Override
     public Data merge(Data data)
     {
-        this.putAll(((ListData)data));
+        if (data != null)
+            this.putAll(((ListData)data));
         return this;
     }
 }
