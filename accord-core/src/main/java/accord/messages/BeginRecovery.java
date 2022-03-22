@@ -148,7 +148,7 @@ public class BeginRecovery extends TxnRequest
             // disseminate directly
             RecoverOk ok = (RecoverOk) reply;
             ConfigurationService configService = node.configService();
-            if (ok.executeAt.epoch > configService.currentEpoch())
+            if (ok.executeAt.epoch > node.topology().epoch())
             {
                 configService.fetchTopologyForEpoch(ok.executeAt.epoch);
                 node.topology().awaitEpoch(ok.executeAt.epoch).addListener(() -> disseminateApply(node, ok));

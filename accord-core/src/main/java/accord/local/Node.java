@@ -284,7 +284,7 @@ public class Node implements ConfigurationService.Listener
         // TODO: The combination of updating the epoch of the next timestamp with epochs we don’t have topologies for,
         //  and requiring preaccept to talk to its topology epoch means that learning of a new epoch via timestamp
         //  (ie not via config service) will halt any new txns from a node until it receives this topology
-        if (txnId.epoch > configService.currentEpoch())
+        if (txnId.epoch > topology().epoch())
         {
             configService.fetchTopologyForEpoch(txnId.epoch);
             return topology().awaitEpoch(txnId.epoch).flatMap(v -> coordinate(txnId, txn));
