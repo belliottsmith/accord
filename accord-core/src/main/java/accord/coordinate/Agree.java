@@ -197,7 +197,10 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         if (!fastPath && ok.witnessedAt.epoch > txnId.epoch)
         {
             if (tracker.recordSupersedingEpoch(ok.witnessedAt.epoch))
-                node.configService().fetchTopologyForEpoch(ok.witnessedAt.epoch).addListener(this::onEpochUpdate);
+            {
+                node.configService().fetchTopologyForEpoch(ok.witnessedAt.epoch);
+                node.topology().awaitEpoch(ok.witnessedAt.epoch).addListener(this::onEpochUpdate);
+            }
         }
 
         if (!tracker.hasSupersedingEpoch() && (tracker.hasMetFastPathCriteria() || shouldSlowPathAccept()))

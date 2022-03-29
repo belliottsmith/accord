@@ -285,7 +285,10 @@ public class Node implements ConfigurationService.Listener
         //  and requiring preaccept to talk to its topology epoch means that learning of a new epoch via timestamp
         //  (ie not via config service) will halt any new txns from a node until it receives this topology
         if (txnId.epoch > configService.currentEpoch())
-            return configService.fetchTopologyForEpoch(txnId.epoch).flatMap(v -> coordinate(txnId, txn));
+        {
+            configService.fetchTopologyForEpoch(txnId.epoch);
+            return topology().awaitEpoch(txnId.epoch).flatMap(v -> coordinate(txnId, txn));
+        }
 
         Future<Result> result = Coordinate.execute(this, txnId, txn);
         coordinating.put(txnId, result);
@@ -309,21 +312,16 @@ public class Node implements ConfigurationService.Listener
     // TODO: encapsulate in Coordinate, so we can request that e.g. commits be re-sent?
     public void recover(TxnId txnId, Txn txn)
     {
-        if (txnId.epoch > configService.currentEpoch())
+        if (txnId.epoch > topology.epoch())
         {
-            configService.fetchTopologyForEpoch(txnId.epoch).addListener(() -> recover(txnId, txn));
+            configService.fetchTopologyForEpoch(txnId.epoch);
+            topology().awaitEpoch(txnId.epoch).addListener(() -> recover(txnId, txn));
             return;
         }
 
         Future<Result> result = coordinating.get(txnId);
         if (result != null)
             return;
-
-        if (txnId.epoch > topology().epoch())
-        {
-            configService().fetchTopologyForEpoch(txnId.epoch).addListener(() -> recover(txnId, txn));
-            return;
-        }
 
         result = Coordinate.recover(this, txnId, txn);
         coordinating.putIfAbsent(txnId, result);
@@ -343,7 +341,8 @@ public class Node implements ConfigurationService.Listener
         long unknownEpoch = topology().maxUnknownEpoch(request);
         if (unknownEpoch > 0)
         {
-            configService.fetchTopologyForEpoch(unknownEpoch).addListener(() -> receive(request, from, replyContext));
+            configService.fetchTopologyForEpoch(unknownEpoch);
+            topology().awaitEpoch(unknownEpoch).addListener(() -> receive(request, from, replyContext));
             return;
         }
         scheduler.now(() -> request.process(this, from, replyContext));

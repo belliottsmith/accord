@@ -154,15 +154,12 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
     private final Map<Long, FetchTopology> pendingEpochs = new HashMap<>();
 
     @Override
-    public synchronized Future<Void> fetchTopologyForEpoch(long epoch)
+    public synchronized void fetchTopologyForEpoch(long epoch)
     {
         if (epoch < epochs.size())
-        {
-            return SUCCESS;
-        }
+            return;
 
-        FetchTopology fetch = pendingEpochs.computeIfAbsent(epoch, FetchTopology::new);
-        return fetch;
+        pendingEpochs.computeIfAbsent(epoch, FetchTopology::new);
     }
 
     @Override
@@ -181,7 +178,8 @@ public class BurnTestConfigurationService implements TestableConfigurationServic
 
         if (topology.epoch() > epochs.size())
         {
-            fetchTopologyForEpoch(epochs.size() + 1).addListener(() -> reportTopology(topology));
+            fetchTopologyForEpoch(epochs.size() + 1);
+            pendingEpochs.get(epochs.size() + 1).addListener(() -> reportTopology(topology));
             return;
         }
         logger.trace("Epoch {} received by {}", topology.epoch(), node);
