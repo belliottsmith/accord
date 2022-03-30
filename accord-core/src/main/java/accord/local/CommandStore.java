@@ -126,29 +126,6 @@ public abstract class CommandStore
         return ranges;
     }
 
-    void purgeRanges(KeyRanges removed)
-    {
-        KeyRanges postPurge = ranges.difference(removed);
-        for (KeyRange range : removed)
-        {
-            NavigableMap<Key, CommandsForKey> subMap = commandsForKey.subMap(range.start(), range.startInclusive(), range.end(), range.endInclusive());
-            Iterator<Key> keyIterator = subMap.keySet().iterator();
-            while (keyIterator.hasNext())
-            {
-                Key key = keyIterator.next();
-                CommandsForKey forKey = commandsForKey.get(key);
-                if (forKey != null)
-                {
-                    for (Command command : forKey)
-                        if (command.txn() != null && !postPurge.intersects(command.txn().keys))
-                            commands.remove(command.txnId());
-                }
-                if (forKey.isEmpty())
-                    keyIterator.remove();
-            }
-        }
-    }
-
     public void forEpochCommands(KeyRanges ranges, long epoch, Consumer<Command> consumer)
     {
         Timestamp minTimestamp = new Timestamp(epoch, Long.MIN_VALUE, Integer.MIN_VALUE, Node.Id.NONE);

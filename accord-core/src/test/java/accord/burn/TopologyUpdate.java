@@ -31,28 +31,7 @@ public class TopologyUpdate
 {
     private static final Logger logger = LoggerFactory.getLogger(TopologyUpdate.class);
 
-    private static class CountDownFuture<T> extends AsyncPromise<T>
-    {
-        private final AtomicInteger remaining;
-        private final T value;
-
-        public CountDownFuture(int count, T value)
-        {
-            this.remaining = new AtomicInteger(count);
-            this.value = value;
-        }
-
-        public CountDownFuture(int count)
-        {
-            this(count, null);
-        }
-
-        public void countDown()
-        {
-            if (remaining.decrementAndGet() == 0)
-                setSuccess(value);
-        }
-    }
+    private static final Set<Long> pendingTopologies = Sets.newConcurrentHashSet();
 
     private static class CommandSync
     {
@@ -118,18 +97,9 @@ public class TopologyUpdate
         return stage.addCallback(dieOnException());
     }
 
-    private static <T> Future<Void> map(Collection<T> items, Function<T, Future<Void>> function)
-    {
-        CountDownFuture<Void> latch = new CountDownFuture<>(items.size());
-        for (T item : items)
-        {
-            function.apply(item).addListener(latch::countDown);
-        }
-        return latch;
-    }
-
     public static MessageTask notify(Node originator, Collection<Node.Id> cluster, Topology update)
     {
+        pendingTopologies.add(update.epoch());
         return MessageTask.begin(originator, cluster, "TopologyNotify:" + update.epoch(), (node, from) -> {
             long nodeEpoch = node.topology().epoch();
             if (nodeEpoch + 1 < update.epoch())
@@ -137,11 +107,6 @@ public class TopologyUpdate
             ((TestableConfigurationService) node.configService()).reportTopology(update);
             return true;
         });
-    }
-
-    private static Future<Void> broadcast(List<Node.Id> cluster, Function<Node.Id, Node> lookup, String desc, BiConsumer<Node, Node.Id> process)
-    {
-        return map(cluster, node -> MessageTask.apply(lookup.apply(node), cluster, desc, process));
     }
 
     private static Collection<Node.Id> allNodesFor(Txn txn, Topology... topologies)
@@ -258,20 +223,16 @@ public class TopologyUpdate
         return dieExceptionally(last);
     }
 
-    public static void update(Node originator, Topology update, List<Node.Id> cluster, Function<Node.Id, Node> lookup)
-    {
-        long epoch = update.epoch();
-        // notify
-        dieExceptionally(notify(originator, cluster, update)
-                // sync operations
-                .flatMap(v -> map(cluster, node -> sync(lookup.apply(node), epoch - 1)))
-                // inform sync complete
-                .flatMap(v -> broadcast(cluster, lookup, "SyncComplete:" + epoch, (node, from) -> node.onEpochSyncComplete(from, epoch))));
-    }
-
     public static Future<Void> syncEpoch(Node originator, long epoch, Collection<Node.Id> cluster)
     {
-        return dieExceptionally(sync(originator, epoch)
+        Future<Void> future = dieExceptionally(sync(originator, epoch)
                 .flatMap(v -> MessageTask.apply(originator, cluster, "SyncComplete:" + epoch, (node, from) -> node.onEpochSyncComplete(originator.id(), epoch))));
+        future.addCallback((unused, throwable) -> pendingTopologies.remove(epoch));
+        return future;
+    }
+
+    public static int pendingTopologies()
+    {
+        return pendingTopologies.size();
     }
 }

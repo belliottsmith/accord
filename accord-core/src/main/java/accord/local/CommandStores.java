@@ -216,6 +216,14 @@ public class CommandStores
         Topology local = cluster.forNode(node);
         KeyRanges added = local.ranges().difference(current.local.ranges());
 
+        for (StoreGroup group : groups.groups)
+        {
+            // FIXME: remove this (and the corresponding check in TopologyRandomizer) once lower bounds are implemented.
+            //  In the meantime, the logic needed to support acquiring ranges that we previously replicated is pretty
+            //  convoluted without the ability to jettison epochs.
+            Preconditions.checkState(!group.ranges.intersects(added));
+        }
+
         if (added.isEmpty())
         {
             groups = groups.withNewTopology(cluster, local);
