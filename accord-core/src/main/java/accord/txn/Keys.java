@@ -282,10 +282,6 @@ public class Keys implements Iterable<Key>
         long apply(Key key, long param, long prev);
     }
 
-    /**
-     * Count the number of keys matching the predicate and intersecting with the given ranges.
-     * If terminateAfter is greater than 0, the method will return once terminateAfter matches are encountered
-     */
     public long foldl(KeyRanges ranges, FoldKeysToLong fold, long param, long initialValue, long terminalValue)
     {
         int keyLB = 0;
@@ -313,7 +309,8 @@ public class Keys implements Iterable<Key>
 
                 for (int i=keyLB; i<highKey; i++)
                 {
-                    if (terminalValue == (initialValue = fold.apply(keys[i], param, initialValue)))
+                    initialValue = fold.apply(keys[i], param, initialValue);
+                    if (terminalValue == initialValue)
                         return initialValue;
                 }
 
