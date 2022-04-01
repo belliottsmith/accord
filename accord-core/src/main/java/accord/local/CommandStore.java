@@ -228,7 +228,7 @@ public abstract class CommandStore
         }
         catch (InterruptedException e)
         {
-            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
         }
         catch (ExecutionException e)
         {

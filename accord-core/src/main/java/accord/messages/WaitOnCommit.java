@@ -3,7 +3,6 @@ package accord.messages;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import accord.local.*;
 import accord.local.Node.Id;
@@ -58,7 +57,7 @@ public class WaitOnCommit extends TxnRequest
                 node.reply(replyToNode, replyContext, WaitOnCommitOk.INSTANCE);
         }
 
-        void process(CommandStore instance)
+        void setup(CommandStore instance)
         {
             Command command = instance.command(txnId);
             switch (command.status())
@@ -81,7 +80,7 @@ public class WaitOnCommit extends TxnRequest
         {
             List<CommandStore> instances = node.collectLocal(keys, ArrayList::new);
             waitingOn.set(instances.size());
-            instances.forEach(instance -> instance.processBlocking(this::process));
+            instances.forEach(instance -> instance.processBlocking(this::setup));
         }
     }
 

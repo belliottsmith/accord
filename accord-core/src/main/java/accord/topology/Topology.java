@@ -118,11 +118,6 @@ public class Topology extends AbstractCollection<Shard>
         return supersetRangeIndexes.length < shards.length;
     }
 
-    public boolean isSubsetOf(Topology topology)
-    {
-        return epoch() == topology.epoch() && Arrays.equals(this.shards, topology.shards);
-    }
-
     public Topology withEpoch(long epoch)
     {
         return new Topology(epoch, shards, ranges, nodeLookup, subsetOfRanges, supersetRangeIndexes);

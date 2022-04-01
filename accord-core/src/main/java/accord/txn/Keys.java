@@ -244,7 +244,7 @@ public class Keys implements Iterable<Key>
         for (;rangeLB<rangeHB && keyLB<keyHB;)
         {
             Key key = keys[keyLB];
-            rangeLB = ranges.rangeIndexForKey(rangeLB, ranges.size(), key);
+            rangeLB = ranges.rangeIndexForKey(rangeLB, rangeHB, key);
 
             if (rangeLB < 0)
             {

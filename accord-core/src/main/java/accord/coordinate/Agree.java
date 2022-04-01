@@ -54,7 +54,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         volatile long supersedingEpoch = -1;
         private final boolean fastPathPermitted;
         private final Set<Id> successes = new HashSet<>();
-        private final Set<Id> failures = new HashSet<>();
+        private Set<Id> failures;
 
         public PreacceptTracker(Topologies topologies, boolean fastPathPermitted)
         {
@@ -70,6 +70,8 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         @Override
         public void recordFailure(Id node)
         {
+            if (failures == null)
+                failures = new HashSet<>();
             failures.add(node);
             super.recordFailure(node);
         }
@@ -103,7 +105,8 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         {
             PreacceptTracker tracker = new PreacceptTracker(topologies, false);
             successes.forEach(tracker::recordSuccess);
-            failures.forEach(tracker::recordFailure);
+            if (failures != null)
+                failures.forEach(tracker::recordFailure);
             return tracker;
         }
 
@@ -111,6 +114,11 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         public boolean hasMetFastPathCriteria()
         {
             return fastPathPermitted && super.hasMetFastPathCriteria();
+        }
+
+        boolean shouldSlowPathAccept()
+        {
+            return (!fastPathPermitted || !hasInFlight()) && hasReachedQuorum();
         }
     }
 
@@ -153,7 +161,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
             tryFailure(new Timeout());
 
         // if no other responses are expected and the slow quorum has been satisfied, proceed
-        if (shouldSlowPathAccept())
+        if (tracker.shouldSlowPathAccept())
             onPreAccepted();
     }
 
@@ -172,7 +180,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
         if (!needMessages.isEmpty())
             node.send(needMessages, to -> new PreAccept(to, newTopologies, txnId, txn), this);
 
-        if (shouldSlowPathAccept())
+        if (tracker.shouldSlowPathAccept())
             onPreAccepted();
     }
 
@@ -203,7 +211,7 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
             }
         }
 
-        if (!tracker.hasSupersedingEpoch() && (tracker.hasMetFastPathCriteria() || shouldSlowPathAccept()))
+        if (!tracker.hasSupersedingEpoch() && (tracker.hasMetFastPathCriteria() || tracker.shouldSlowPathAccept()))
             onPreAccepted();
     }
 
@@ -237,11 +245,6 @@ class Agree extends AcceptPhase implements Callback<PreAcceptReply>
 
             startAccept(executeAt, deps, tracker.topologies());
         }
-    }
-
-    private boolean shouldSlowPathAccept()
-    {
-        return (!tracker.fastPathPermitted || !tracker.hasInFlight()) && tracker.hasReachedQuorum();
     }
 
     private boolean isPreAccepted()

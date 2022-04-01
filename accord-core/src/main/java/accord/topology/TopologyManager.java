@@ -35,7 +35,7 @@ public class TopologyManager implements ConfigurationService.Listener
         private final Topology local;
         private final QuorumTracker syncTracker;
         private boolean syncComplete = false;
-        private boolean prevSynced = false;
+        private boolean prevSynced;
 
         EpochState(Topology global, boolean prevSynced)
         {
@@ -43,8 +43,7 @@ public class TopologyManager implements ConfigurationService.Listener
             this.global = global;
             this.local = global.forNode(node);
             this.syncTracker = new QuorumTracker(new Topologies.Singleton(global, false));
-            if (prevSynced)
-                markPrevSynced();
+            this.prevSynced = prevSynced;
         }
 
         void markPrevSynced()
