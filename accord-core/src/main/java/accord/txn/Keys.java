@@ -224,16 +224,16 @@ public class Keys implements Iterable<Key>
         return result != null ? new Keys(result) : EMPTY;
     }
 
-    public interface KeyAccumulator<V>
+    public interface KeyFold<V>
     {
-        V accumulate(Key key, V value);
+        V fold(Key key, V value);
     }
 
     /**
      * Count the number of keys matching the predicate and intersecting with the given ranges.
      * If terminateAfter is greater than 0, the method will return once terminateAfter matches are encountered
      */
-    public <V> V accumulate(KeyRanges ranges, KeyAccumulator<V> accumulator, V value)
+    public <V> V foldl(KeyRanges ranges, KeyFold<V> fold, V accumulator)
     {
         int keyLB = 0;
         int keyHB = size();
@@ -259,7 +259,7 @@ public class Keys implements Iterable<Key>
                 int highKey = range.higherKeyIndex(this, keyLB, keyHB);
 
                 for (int i=keyLB; i<highKey; i++)
-                    value = accumulator.accumulate(keys[i], value);
+                    accumulator = fold.fold(keys[i], accumulator);
 
                 keyLB = highKey;
                 rangeLB++;
@@ -269,7 +269,7 @@ public class Keys implements Iterable<Key>
                 keyLB = -1 - keyLB;
         }
 
-        return value;
+        return accumulator;
     }
 
     public boolean any(KeyRanges ranges, Predicate<Key> predicate)

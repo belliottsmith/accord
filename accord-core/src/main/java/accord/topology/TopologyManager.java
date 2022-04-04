@@ -76,7 +76,7 @@ public class TopologyManager implements ConfigurationService.Listener
                 return false;
             if (syncComplete)
                 return true;
-            Boolean result = global.accumulateForKeys(keys, (i, shard, acc) -> {
+            Boolean result = global.foldl(keys, (i, shard, acc) -> {
                 if (acc == Boolean.FALSE)
                     return acc;
                 return Boolean.valueOf(syncTracker.unsafeGet(i).hasReachedQuorum());
