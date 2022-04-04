@@ -23,6 +23,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.utils.concurrent.UncheckedInterruptedException;
 
 /**
  * Single threaded internal shard of accord transaction metadata
@@ -228,7 +229,7 @@ public abstract class CommandStore
         }
         catch (InterruptedException e)
         {
-            throw new AssertionError(e);
+            throw new UncheckedInterruptedException(e);
         }
         catch (ExecutionException e)
         {
