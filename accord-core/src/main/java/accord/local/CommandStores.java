@@ -291,7 +291,7 @@ public abstract class CommandStores
             {
                 for (CommandStore store : group.stores)
                 {
-                    if (store.contains(key))
+                    if (store.hashIntersects(key))
                         return store;
                 }
             }
