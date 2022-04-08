@@ -179,35 +179,8 @@ public class TopologyManager implements ConfigurationService.Listener
 
         long maxUnknownEpoch(TxnRequest.Scope scope)
         {
-            EpochState lastState = null;
-            for (int i=0, mi=scope.size(); i<mi; i++)
-            {
-                TxnRequest.Scope.KeysForEpoch requestRanges = scope.get(i);
-                EpochState epochState = get(requestRanges.epoch);
-
-                if (epochState != null)
-                {
-                    lastState = epochState;
-                }
-                else if (lastState != null && lastState.local.ranges().intersects(requestRanges.keys))
-                {
-                    // we don't have the most recent epoch, but still replicate the requested ranges
-                    continue;
-                }
-                else
-                {
-                    // we don't have the most recent epoch, and we don't replicate the requested ranges
-                    return scope.maxEpoch();
-                }
-
-                // validate requested ranges
-                KeyRanges localRanges = epochState.local.ranges();
-                if (!localRanges.intersects(requestRanges.keys))
-                    throw new RuntimeException("Received request for ranges not replicated by this node");
-            }
-            if (scope.maxEpoch() > 0)
-                epochReporter.accept(scope.maxEpoch());
-
+            if (currentEpoch < scope.minRequiredEpoch())
+                return scope.minRequiredEpoch();
             return 0;
         }
 

@@ -75,11 +75,6 @@ public class TopologyChangeTest
                 });
             });
 
-            // old nodes should be aware of the new epoch
-            cluster.configServices(1, 2, 3).forEach(config -> {
-                Assertions.assertEquals(2, config.currentEpoch());
-            });
-
             // ...and participated in consensus
             cluster.nodes(1, 2, 3).forEach(node -> {
                 node.forEachLocal(keys, commands -> {

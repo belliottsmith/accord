@@ -53,7 +53,7 @@ public class PreAcceptTest
 
     private static TxnRequest.Scope scope(TxnId txnId, Txn txn)
     {
-        return new TxnRequest.Scope(txnId.epoch, new TxnRequest.Scope.KeysForEpoch(txnId.epoch, txn.keys()));
+        return new TxnRequest.Scope(txnId.epoch, txn.keys());
     }
 
     private static PreAccept preAccept(TxnId txnId, Txn txn)

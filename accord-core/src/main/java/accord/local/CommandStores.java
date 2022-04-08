@@ -57,7 +57,7 @@ public abstract class CommandStores
 
         long matches(TxnRequest.Scope scope)
         {
-            return scope.foldl(ranges, StoreGroup::addKeyIndex, stores.length, 0L, all());
+            return matches(scope.keys());
         }
 
         static long keyIndex(Key key, long numShards)
