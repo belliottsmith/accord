@@ -24,7 +24,7 @@ public class Commit extends ReadData
 
     public Commit(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, boolean read)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt, deps, read);
+        this(Scope.forTopologies(to, topologies, txn, txnId.epoch), txnId, txn, homeKey, executeAt, deps, read);
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)

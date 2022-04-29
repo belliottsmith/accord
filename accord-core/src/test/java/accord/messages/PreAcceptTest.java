@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Random;
 
 import static accord.Utils.id;
 import static accord.Utils.writeTxn;
@@ -49,6 +50,7 @@ public class PreAcceptTest
                         clock,
                         () -> store,
                         new TestAgent(),
+                        new Random(),
                         scheduler,
                         SimpleProgressLog::new,
                         CommandStores.SingleThread::new);
@@ -56,7 +58,7 @@ public class PreAcceptTest
 
     private static TxnRequest.Scope scope(TxnId txnId, Txn txn)
     {
-        return new TxnRequest.Scope(txnId.epoch, txn.keys());
+        return new TxnRequest.Scope(txnId.epoch, txnId.epoch, txn.keys());
     }
 
     private static PreAccept preAccept(TxnId txnId, Txn txn, Key homeKey)

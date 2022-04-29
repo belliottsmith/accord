@@ -34,7 +34,7 @@ public class PreAccept extends TxnRequest
 
     public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey);
+        this(Scope.forTopologies(to, topologies, txn, txnId.epoch), txnId, txn, homeKey);
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)
@@ -166,11 +166,14 @@ public class PreAccept extends TxnRequest
     private static Stream<Command> conflictsMayExecuteBefore(CommandStore commandStore, Timestamp mayExecuteBefore, Keys keys)
     {
         return keys.stream().flatMap(key -> {
-            CommandsForKey forKey = commandStore.commandsForKey(key);
+            CommandsForKey forKey = commandStore.maybeCommandsForKey(key);
+            if (forKey == null)
+                return Stream.of();
+
             return Stream.concat(
-            forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
-            // TODO: only return latest of Committed?
-            forKey.committedByExecuteAt.headMap(mayExecuteBefore, false).values().stream()
+                forKey.uncommitted.headMap(mayExecuteBefore, false).values().stream(),
+                // TODO: only return latest of Committed?
+                forKey.committedByExecuteAt.headMap(mayExecuteBefore, false).values().stream()
             );
         });
     }

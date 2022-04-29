@@ -63,7 +63,8 @@ public abstract class CommandStores
 
         long matches(Key key)
         {
-            return 1L << ranges.rangeIndexForKey(key);
+            int index = ranges.rangeIndexForKey(key);
+            return index < 0 ? 0L : 1L << index;
         }
 
         long matches(TxnRequest.Scope scope)
@@ -204,9 +205,9 @@ public abstract class CommandStores
         this.shardFactory = shardFactory;
     }
 
-    private CommandStore createCommandStore(int generation, int index, KeyRanges ranges)
+    private CommandStore createCommandStore(int generation, int shardIndex, KeyRanges ranges)
     {
-        return shardFactory.create(generation, index, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, this::getLocalTopology);
+        return shardFactory.create(generation, shardIndex, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, this::getLocalTopology);
     }
 
     private Topology getLocalTopology()
@@ -265,15 +266,15 @@ public abstract class CommandStores
         return to;
     }
 
-    public synchronized void updateTopology(Topology cluster)
+    public synchronized void updateTopology(Topology newTopology)
     {
-        Preconditions.checkArgument(!cluster.isSubset(), "Use full topology for CommandStores.updateTopology");
+        Preconditions.checkArgument(!newTopology.isSubset(), "Use full topology for CommandStores.updateTopology");
 
         StoreGroups current = groups;
-        if (cluster.epoch() <= current.global.epoch())
+        if (newTopology.epoch() <= current.global.epoch())
             return;
 
-        Topology local = cluster.forNode(node.id());
+        Topology local = newTopology.forNode(node.id());
         KeyRanges added = local.ranges().difference(current.local.ranges());
 
         for (StoreGroup group : groups.groups)
@@ -286,7 +287,7 @@ public abstract class CommandStores
 
         if (added.isEmpty())
         {
-            groups = groups.withNewTopology(cluster, local);
+            groups = groups.withNewTopology(newTopology, local);
             return;
         }
 
@@ -300,7 +301,7 @@ public abstract class CommandStores
 
         newGroups[current.groups.length] = new StoreGroup(newStores, added);
 
-        groups = new StoreGroups(newGroups, cluster, local);
+        groups = new StoreGroups(newGroups, newTopology, local);
     }
 
     @VisibleForTesting

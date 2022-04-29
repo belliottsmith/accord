@@ -1,6 +1,5 @@
 package accord.coordinate;
 
-import accord.api.KeyRange;
 import accord.impl.mock.EpochSync;
 import accord.impl.mock.MockCluster;
 import accord.impl.mock.MockConfigurationService;
@@ -9,6 +8,7 @@ import accord.local.Command;
 import accord.local.Node;
 import accord.local.Status;
 import accord.messages.Accept;
+import accord.topology.KeyRange;
 import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.Txn;

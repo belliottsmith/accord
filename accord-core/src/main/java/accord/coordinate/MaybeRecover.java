@@ -67,7 +67,6 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
     private static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard,
                                                                Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
     {
-        Preconditions.checkArgument(node.isReplicaOf(homeKey));
         MaybeRecover maybeRecover = new MaybeRecover(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
         maybeRecover.start();
         return maybeRecover;

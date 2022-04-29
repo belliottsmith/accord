@@ -9,6 +9,7 @@ import accord.api.Key;
 import accord.txn.Keys;
 import accord.utils.IndexedConsumer;
 import accord.utils.IndexedBiFunction;
+import accord.utils.IndexedIntFunction;
 import accord.utils.IndexedPredicate;
 
 public class Topology extends AbstractCollection<Shard>
@@ -288,21 +289,21 @@ public class Topology extends AbstractCollection<Shard>
         return count;
     }
 
-    public int foldlIntOn(Id on, IndexedPredicate<Shard> consumer)
+    public int foldlIntOn(Id on, IndexedIntFunction<Shard> consumer, int offset, int initialValue, int terminalValue)
     {
         // TODO: this can be done by divide-and-conquer splitting of the lists and recursion, which should be more efficient
-        int count = 0;
         NodeInfo info = nodeLookup.get(on);
         if (info == null)
-            return 0;
+            return initialValue;
         int[] a = supersetRangeIndexes, b = info.supersetIndexes;
         int ai = 0, bi = 0;
         while (ai < a.length && bi < b.length)
         {
             if (a[ai] == b[bi])
             {
-                if (consumer.test(ai, shards[a[ai]]))
-                    ++count;
+                initialValue = consumer.apply(offset + ai, shards[a[ai]], initialValue);
+                if (terminalValue == initialValue)
+                    return terminalValue;
                 ++ai; ++bi;
             }
             else if (a[ai] < b[bi])
@@ -316,7 +317,7 @@ public class Topology extends AbstractCollection<Shard>
                 if (bi < 0) bi = -1 -bi;
             }
         }
-        return count;
+        return initialValue;
     }
 
     public void forEach(IndexedConsumer<Shard> consumer)

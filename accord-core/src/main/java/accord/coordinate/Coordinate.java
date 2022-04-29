@@ -35,13 +35,12 @@ public class Coordinate
 
     public static Future<Result> execute(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        Preconditions.checkArgument(node.isReplicaOf(homeKey));
+        Preconditions.checkArgument(node.isReplicaOf(txnId, homeKey));
         return andThenExecute(node, Agree.agree(node, txnId, txn, homeKey));
     }
 
     public static Future<Result> recover(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
-        Preconditions.checkArgument(node.isReplicaOf(homeKey));
         return andThenExecute(node, new Recover(node, new Ballot(node.uniqueNow()), txnId, txn, homeKey));
     }
 }

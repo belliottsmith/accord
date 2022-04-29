@@ -69,12 +69,12 @@ class Agree extends Propose implements Callback<PreAcceptReply>
         }
 
         @Override
-        public void recordFailure(Id node)
+        public boolean failure(Id node)
         {
             if (failures == null)
                 failures = new HashSet<>();
             failures.add(node);
-            super.recordFailure(node);
+            return super.failure(node);
         }
 
         @Override
@@ -107,7 +107,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
             PreacceptTracker tracker = new PreacceptTracker(topologies, false);
             successes.forEach(tracker::recordSuccess);
             if (failures != null)
-                failures.forEach(tracker::recordFailure);
+                failures.forEach(tracker::failure);
             return tracker;
         }
 
@@ -157,8 +157,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
         if (isDone() || isPreAccepted())
             return;
 
-        tracker.recordFailure(from);
-        if (tracker.hasFailed())
+        if (tracker.failure(from))
             tryFailure(new Timeout());
 
         // if no other responses are expected and the slow quorum has been satisfied, proceed

@@ -35,7 +35,7 @@ public abstract class CommandStore
     public interface Factory
     {
         CommandStore create(int generation,
-                            int index,
+                            int shardIndex,
                             int numShards,
                             Node node,
                             Function<Timestamp, Timestamp> uniqueNow,
@@ -45,14 +45,10 @@ public abstract class CommandStore
                             ProgressLog.Factory progressLogFactory,
                             KeyRanges ranges,
                             Supplier<Topology> localTopologySupplier);
-
-        Factory SYNCHRONIZED = Synchronized::new;
-        Factory SINGLE_THREAD = SingleThread::new;
-        Factory SINGLE_THREAD_DEBUG = Debug::new;
     }
 
     private final int generation;
-    private final int index;
+    private final int shardIndex;
     private final int numShards;
     private final Node node;
     private final Function<Timestamp, Timestamp> uniqueNow;
@@ -66,7 +62,7 @@ public abstract class CommandStore
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
 
     public CommandStore(int generation,
-                        int index,
+                        int shardIndex,
                         int numShards,
                         Node node,
                         Function<Timestamp, Timestamp> uniqueNow,
@@ -77,8 +73,9 @@ public abstract class CommandStore
                         KeyRanges ranges,
                         Supplier<Topology> localTopologySupplier)
     {
+        Preconditions.checkArgument(shardIndex < numShards);
         this.generation = generation;
-        this.index = index;
+        this.shardIndex = shardIndex;
         this.numShards = numShards;
         this.node = node;
         this.uniqueNow = uniqueNow;
@@ -102,6 +99,11 @@ public abstract class CommandStore
     public CommandsForKey commandsForKey(Key key)
     {
         return commandsForKey.computeIfAbsent(key, ignore -> new CommandsForKey());
+    }
+
+    public CommandsForKey maybeCommandsForKey(Key key)
+    {
+        return commandsForKey.get(key);
     }
 
     public boolean hasCommandsForKey(Key key)
@@ -136,10 +138,11 @@ public abstract class CommandStore
 
     public long epoch()
     {
+        // TODO: why not inject the epoch to each command store?
         return localTopologySupplier.get().epoch();
     }
 
-    public KeyRanges ranges()
+    public KeyRanges ranges(long epoch)
     {
         return ranges;
     }
@@ -147,7 +150,8 @@ public abstract class CommandStore
     protected Timestamp maxConflict(Keys keys)
     {
         return keys.stream()
-                   .map(this::commandsForKey)
+                   .map(this::maybeCommandsForKey)
+                   .filter(Objects::nonNull)
                    .map(CommandsForKey::max)
                    .max(Comparator.naturalOrder())
                    .orElse(Timestamp.NONE);
@@ -194,22 +198,17 @@ public abstract class CommandStore
 
     public int index()
     {
-        return index;
+        return shardIndex;
     }
 
     public boolean hashIntersects(Key key)
     {
-        return StoreGroup.keyIndex(key, numShards) == index;
+        return StoreGroup.keyIndex(key, numShards) == shardIndex;
     }
 
     public boolean intersects(Keys keys)
     {
         return keys.any(ranges, this::hashIntersects);
-    }
-
-    public boolean contains(Key key)
-    {
-        return ranges.contains(key);
     }
 
     public static void onEach(Collection<CommandStore> stores, Consumer<? super CommandStore> consumer)

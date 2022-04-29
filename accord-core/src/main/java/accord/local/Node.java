@@ -103,25 +103,26 @@ public class Node implements ConfigurationService.Listener
     private final LongSupplier nowSupplier;
     private final AtomicReference<Timestamp> now;
     private final Agent agent;
+    private final Random random;
 
     // TODO: this really needs to be thought through some more, as it needs to be per-instance in some cases, and per-node in others
     private final Scheduler scheduler;
 
     private final Map<TxnId, Future<Result>> coordinating = new ConcurrentHashMap<>();
-    private final Set<TxnId> pendingRecovery = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public Node(Id id, MessageSink messageSink, ConfigurationService configService, LongSupplier nowSupplier,
-                Supplier<DataStore> dataSupplier, Agent agent, Scheduler scheduler,
+                Supplier<DataStore> dataSupplier, Agent agent, Random random, Scheduler scheduler,
                 Function<Node, ProgressLog.Factory> progressLogFactory, CommandStores.Factory factory)
     {
         this.id = id;
-        this.agent = agent;
         this.messageSink = messageSink;
         this.configService = configService;
         this.topology = new TopologyManager(id, configService::reportEpoch);
         Topology topology = configService.currentTopology();
-        this.now = new AtomicReference<>(new Timestamp(topology.epoch(), nowSupplier.getAsLong(), 0, id));
         this.nowSupplier = nowSupplier;
+        this.now = new AtomicReference<>(new Timestamp(topology.epoch(), nowSupplier.getAsLong(), 0, id));
+        this.agent = agent;
+        this.random = random;
         this.scheduler = scheduler;
         this.commandStores = factory.create(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), scheduler, progressLogFactory.apply(this));
 
@@ -314,51 +315,61 @@ public class Node implements ConfigurationService.Listener
         return new TxnId(uniqueNow());
     }
 
-    public Future<Result> coordinate(TxnId txnId, Txn txn)
-    {
-        // TODO: The combination of updating the epoch of the next timestamp with epochs we don’t have topologies for,
-        //  and requiring preaccept to talk to its topology epoch means that learning of a new epoch via timestamp
-        //  (ie not via config service) will halt any new txns from a node until it receives this topology
-        if (txnId.epoch > topology().epoch())
-        {
-            configService.fetchTopologyForEpoch(txnId.epoch);
-            return topology().awaitEpoch(txnId.epoch).flatMap(v -> coordinate(txnId, txn));
-        }
-
-        Key homeKey = trySelectHomeKey(txn.keys);
-        if (homeKey == null)
-        {
-            homeKey = selectRandomHomeKey();
-            txn = new Txn(txn.keys.with(homeKey), txn.read, txn.query, txn.update);
-        }
-        Future<Result> result = Coordinate.execute(this, txnId, txn, homeKey);
-        coordinating.put(txnId, result);
-        // TODO (now): if we fail, nominate another node to try instead
-        result.addCallback((success, fail) -> coordinating.remove(txnId));
-        return result;
-    }
-
     public Future<Result> coordinate(Txn txn)
     {
         return coordinate(nextTxnId(), txn);
     }
 
-    @VisibleForTesting
-    public @Nullable Key trySelectHomeKey(Keys keys)
+    public Future<Result> coordinate(TxnId txnId, Txn txn)
     {
-        int i = topology().current().ranges().findFirstIntersecting(keys);
+        // TODO: The combination of updating the epoch of the next timestamp with epochs we don’t have topologies for,
+        //  and requiring preaccept to talk to its topology epoch means that learning of a new epoch via timestamp
+        //  (ie not via config service) will halt any new txns from a node until it receives this topology
+        Future<Result> result;
+        if (txnId.epoch > topology().epoch())
+        {
+            configService.fetchTopologyForEpoch(txnId.epoch);
+            result = topology().awaitEpoch(txnId.epoch)
+                               .flatMap(ignore -> initiateCoordination(txnId, txn));
+        }
+        else
+        {
+            result = initiateCoordination(txnId, txn);
+        }
+
+        coordinating.putIfAbsent(txnId, result);
+        // TODO (now): if we fail, nominate another node to try instead
+        result.addCallback((success, fail) -> coordinating.remove(txnId, result));
+        return result;
+    }
+
+    private Future<Result> initiateCoordination(TxnId txnId, Txn txn)
+    {
+        Key homeKey = trySelectHomeKey(txnId, txn.keys);
+        if (homeKey == null)
+        {
+            homeKey = selectRandomHomeKey(txnId);
+            txn = new Txn(txn.keys.with(homeKey), txn.read, txn.query, txn.update);
+        }
+        return Coordinate.execute(this, txnId, txn, homeKey);
+    }
+
+    @VisibleForTesting
+    public @Nullable Key trySelectHomeKey(TxnId txnId, Keys keys)
+    {
+        int i = topology().localForEpoch(txnId.epoch).ranges().findFirstIntersecting(keys);
         return i >= 0 ? keys.get(i) : null;
     }
 
-    public Key selectHomeKey(Keys keys)
+    public Key selectHomeKey(TxnId txnId, Keys keys)
     {
-        Key key = trySelectHomeKey(keys);
-        return key != null ? key : selectRandomHomeKey();
+        Key key = trySelectHomeKey(txnId, keys);
+        return key != null ? key : selectRandomHomeKey(txnId);
     }
 
-    public Key selectRandomHomeKey()
+    public Key selectRandomHomeKey(TxnId txnId)
     {
-        KeyRanges ranges = topology().current().ranges();
+        KeyRanges ranges = topology().localForEpoch(txnId.epoch).ranges();
         KeyRange range = ranges.get(ranges.size() == 1 ? 0 : random.nextInt(ranges.size()));
         return range.endInclusive() ? range.end() : range.start();
     }
@@ -366,21 +377,27 @@ public class Node implements ConfigurationService.Listener
     // TODO: encapsulate in Coordinate, so we can request that e.g. commits be re-sent?
     public Future<Result> recover(TxnId txnId, Txn txn, Key homeKey)
     {
+        {
+            Future<Result> result = coordinating.get(txnId);
+            if (result != null)
+                return result;
+        }
+
+        Future<Result> result;
         if (txnId.epoch > topology.epoch())
         {
             configService.fetchTopologyForEpoch(txnId.epoch);
-            topology().awaitEpoch(txnId.epoch).addListener(() -> recover(txnId, txn, homeKey));
-            return;
+            result = topology().awaitEpoch(txnId.epoch)
+                               .flatMap(ignore -> Coordinate.recover(this, txnId, txn, homeKey));
+        }
+        else
+        {
+            result = Coordinate.recover(this, txnId, txn, homeKey);
         }
 
-        Future<Result> result = coordinating.get(txnId);
-        if (result != null)
-            return result;
-
-        result = Coordinate.recover(this, txnId, txn, homeKey);
         coordinating.putIfAbsent(txnId, result);
         result.addCallback((success, fail) -> {
-            coordinating.remove(txnId);
+            coordinating.remove(txnId, result);
             agent.onRecover(this, success, fail);
             // TODO (now): if we fail, nominate another node to try instead
         });
@@ -399,9 +416,14 @@ public class Node implements ConfigurationService.Listener
         scheduler.now(() -> request.process(this, from, replyContext));
     }
 
-    public boolean isReplicaOf(Key key)
+    public boolean isReplicaOf(Timestamp at, Key key)
     {
-        return commandStores.topology().ranges().contains(key);
+        return topology().localForEpoch(at.epoch).ranges().contains(key);
+    }
+
+    public boolean isReplicaOf(long epoch, Key key)
+    {
+        return topology().localForEpoch(epoch).ranges().contains(key);
     }
 
     public Scheduler scheduler()

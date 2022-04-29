@@ -15,14 +15,10 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-<<<<<<< HEAD
 import accord.api.MessageSink;
 import accord.burn.BurnTestConfigurationService;
 import accord.local.CommandStores;
-=======
 import accord.impl.SimpleProgressLog;
-import accord.local.CommandStore;
->>>>>>> 9e2cbf0 (first draft)
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.api.Scheduler;
@@ -40,6 +36,7 @@ import org.slf4j.LoggerFactory;
 public class Cluster implements Scheduler
 {
     private static final Logger logger = LoggerFactory.getLogger(Cluster.class);
+    private static final Logger trace = LoggerFactory.getLogger("accord.impl.basic.Trace");
 
     final Function<Id, Node> lookup;
     final PendingQueue pending;
@@ -67,7 +64,7 @@ public class Cluster implements Scheduler
     private void add(Packet packet)
     {
         boolean isReply = packet.message instanceof Reply;
-        logger.trace("{} {} {}", clock++, isReply ? "RPLY" : "SEND", packet);
+        trace.trace("{} {} {}", clock++, isReply ? "RPLY" : "SEND", packet);
         if (lookup.apply(packet.dst) == null) responseSink.accept(packet);
         else pending.add(packet);
     }
@@ -95,16 +92,18 @@ public class Cluster implements Scheduler
         {
             Packet deliver = (Packet) next;
             Node on = lookup.apply(deliver.dst);
+
+            // TODO (now): random drop chance independent of partition; also port flaky connections etc. from simulator
             // Drop the message if it goes across the partition
             boolean drop = ((Packet) next).src.id >= 0 &&
                     !(partitionSet.contains(deliver.src) && partitionSet.contains(deliver.dst)
                             || !partitionSet.contains(deliver.src) && !partitionSet.contains(deliver.dst));
             if (drop)
             {
-                logger.debug("{} DROP[{}] {}", clock++, on.epoch(), deliver);
+                logger.trace("{} DROP[{}] {}", clock++, on.epoch(), deliver);
                 return true;
             }
-            logger.debug("{} RECV[{}] {}", clock++, on.epoch(), deliver);
+            trace.trace("{} RECV[{}] {}", clock++, on.epoch(), deliver);
             if (deliver.message instanceof Reply)
             {
                 Reply reply = (Reply) deliver.message;
@@ -158,7 +157,8 @@ public class Cluster implements Scheduler
                 MessageSink messageSink = sinks.create(node, randomSupplier.get());
                 BurnTestConfigurationService configService = new BurnTestConfigurationService(node, messageSink, randomSupplier, topology, lookup::get);
                 lookup.put(node, new Node(node, messageSink, configService,
-                                          nowSupplier.get(), () -> new ListStore(node), ListAgent.INSTANCE, sinks, SimpleProgressLog::new, CommandStores.Synchronized::new));
+                                          nowSupplier.get(), () -> new ListStore(node), ListAgent.INSTANCE,
+                                          randomSupplier.get(), sinks, SimpleProgressLog::new, CommandStores.Synchronized::new));
             }
 
             List<Id> nodesList = new ArrayList<>(Arrays.asList(nodes));

@@ -1,11 +1,12 @@
 package accord.burn;
 
-import accord.api.KeyRange;
+import accord.api.Key;
 import accord.api.Result;
 import accord.api.TestableConfigurationService;
 import accord.local.Command;
 import accord.local.Node;
 import accord.local.Status;
+import accord.topology.KeyRange;
 import accord.topology.KeyRanges;
 import accord.topology.Shard;
 import accord.topology.Topology;
@@ -13,7 +14,6 @@ import accord.txn.*;
 import accord.utils.MessageTask;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import org.apache.cassandra.utils.concurrent.AsyncPromise;
 import org.apache.cassandra.utils.concurrent.Future;
 import org.apache.cassandra.utils.concurrent.ImmediateFuture;
 import org.slf4j.Logger;
@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -38,6 +37,7 @@ public class TopologyUpdate
         private final Status status;
         private final TxnId txnId;
         private final Txn txn;
+        private final Key homeKey;
         private final Timestamp executeAt;
 
         private final Dependencies deps;
@@ -49,30 +49,32 @@ public class TopologyUpdate
             Preconditions.checkArgument(command.hasBeen(Status.PreAccepted));
             this.txnId = command.txnId();
             this.txn = command.txn();
+            this.homeKey = command.homeKey();
             this.status = command.status();
             this.executeAt = command.executeAt();
             this.deps = command.savedDeps();
             this.writes = command.writes();
             this.result = command.result();
         }
+
         public void process(Node node)
         {
             node.forEachLocal(txn, commandStore -> {
                 switch (status)
                 {
                     case PreAccepted:
-                        commandStore.command(txnId).witness(txn);
+                        commandStore.command(txnId).preaccept(txn, homeKey);
                         break;
                     case Accepted:
-                        commandStore.command(txnId).accept(Ballot.ZERO, txn, executeAt, deps);
+                        commandStore.command(txnId).accept(Ballot.ZERO, txn, homeKey, executeAt, deps);
                         break;
                     case Committed:
                     case ReadyToExecute:
-                        commandStore.command(txnId).commit(txn, deps, executeAt);
+                        commandStore.command(txnId).commit(txn, homeKey, deps, executeAt);
                         break;
                     case Executed:
                     case Applied:
-                        commandStore.command(txnId).apply(txn, deps, executeAt, writes, result);
+                        commandStore.command(txnId).apply(txn, homeKey, executeAt, deps, writes, result);
                         break;
                     default:
                         throw new IllegalStateException();

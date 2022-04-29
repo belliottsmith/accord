@@ -42,8 +42,11 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         this.keys = txn.keys();
         this.deps = agreed.deps;
         this.executeAt = agreed.executeAt;
-        this.topologies = node.topology().forTxn(agreed.txn).removeEpochsBefore(agreed.executeAt.epoch);
-        this.readTracker = new ReadTracker(topologies.removeEpochsBefore(topologies.currentEpoch()));
+        // TODO (now): why do we removeEpochsBefore rather than do forTxn(agreed.txn, agreed.executeAt.epoch)?
+        Topologies coordinationTopologies = node.topology().forTxn(agreed.txn).removeEpochsBefore(agreed.executeAt.epoch);
+        Topologies readTopologies = node.topology().currentForKeys(agreed.txn.read.keys());
+        this.readTracker = new ReadTracker(readTopologies);
+        this.topologies = coordinationTopologies;
 
         // TODO: perhaps compose these different behaviours differently?
         if (agreed.applied != null)
@@ -112,7 +115,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         Set<Id> readFrom = readTracker.computeMinimalReadSetAndMarkInflight();
         if (readFrom != null)
         {
-            node.send(readFrom, to -> new ReadData(to, topologies, txnId, txn, homeKey, executeAt), this);
+            node.send(readFrom, to -> new ReadData(to, readTracker.topologies(), txnId, txn, homeKey, executeAt), this);
         }
         else if (readTracker.hasFailed())
         {

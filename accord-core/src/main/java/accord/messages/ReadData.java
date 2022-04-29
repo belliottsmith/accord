@@ -2,6 +2,8 @@ package accord.messages;
 
 import java.util.Set;
 
+import com.google.common.base.Preconditions;
+
 import accord.api.Key;
 import accord.local.*;
 import accord.local.Node.Id;
@@ -20,19 +22,20 @@ public class ReadData extends TxnRequest
         final TxnId txnId;
         final Node node;
         final Node.Id replyToNode;
-        final Keys keyScope;
+        final Keys readKeys;
         final ReplyContext replyContext;
 
         Data data;
         boolean isObsolete; // TODO: respond with the Executed result we have stored?
         Set<CommandStore> waitingOn;
 
-        LocalRead(TxnId txnId, Node node, Id replyToNode, Keys keyScope, ReplyContext replyContext)
+        LocalRead(TxnId txnId, Node node, Id replyToNode, Keys readKeys, ReplyContext replyContext)
         {
+            Preconditions.checkArgument(!readKeys.isEmpty());
             this.txnId = txnId;
             this.node = node;
             this.replyToNode = replyToNode;
-            this.keyScope = keyScope;
+            this.readKeys = readKeys;
             this.replyContext = replyContext;
         }
 
@@ -61,7 +64,7 @@ public class ReadData extends TxnRequest
         private void read(Command command)
         {
             // TODO: threading/futures (don't want to perform expensive reads within this mutually exclusive context)
-            Data next = command.txn().read(command, keyScope);
+            Data next = command.txn().read(command, readKeys);
             data = data == null ? next : data.merge(next);
 
             waitingOn.remove(command.commandStore);
@@ -124,12 +127,12 @@ public class ReadData extends TxnRequest
 
     public ReadData(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt);
+        this(Scope.forTopologies(to, topologies, txn, executeAt.epoch), txnId, txn, homeKey, executeAt);
     }
 
     public void process(Node node, Node.Id from, ReplyContext replyContext)
     {
-        new LocalRead(txnId, node, from, scope().keys(), replyContext).setup(txnId, txn, homeKey, scope());
+        new LocalRead(txnId, node, from, txn.read.keys().intersect(scope().keys()), replyContext).setup(txnId, txn, homeKey, scope());
     }
 
     @Override

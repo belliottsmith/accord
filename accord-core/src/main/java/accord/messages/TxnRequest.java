@@ -9,6 +9,8 @@ import accord.txn.Txn;
 
 import java.util.Objects;
 
+import com.google.common.base.Preconditions;
+
 public abstract class TxnRequest implements Request
 {
     private final Scope scope;
@@ -29,16 +31,19 @@ public abstract class TxnRequest implements Request
      */
     public static class Scope
     {
+        private final long evaluationEpoch;
         private final long minRequiredEpoch;
         private final Keys keys;
 
-        public Scope(long minRequiredEpoch, Keys keys)
+        public Scope(long evaluationEpoch, long minRequiredEpoch, Keys keys)
         {
+            this.evaluationEpoch = evaluationEpoch;
+            Preconditions.checkArgument(!keys.isEmpty());
             this.minRequiredEpoch = minRequiredEpoch;
             this.keys = keys;
         }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Keys txnKeys)
+        public static Scope forTopologies(Node.Id node, Topologies topologies, Keys keys, long evaluationEpoch)
         {
             long minEpoch = 0;
             Keys scopeKeys = Keys.EMPTY;
@@ -49,22 +54,22 @@ public abstract class TxnRequest implements Request
                 KeyRanges topologyRanges = topology.rangesForNode(node);
                 if (topologyRanges == null)
                     continue;
-                topologyRanges = topologyRanges.intersection(txnKeys);
-                Keys epochKeys = txnKeys.intersection(topologyRanges);
+                topologyRanges = topologyRanges.intersection(keys);
+                Keys epochKeys = keys.intersect(topologyRanges);
                 if (lastKeys == null || !lastKeys.equals(epochKeys))
                 {
                     minEpoch = topology.epoch();
-                    scopeKeys = scopeKeys.merge(epochKeys);
+                    scopeKeys = scopeKeys.union(epochKeys);
                 }
                 lastKeys = epochKeys;
             }
 
-            return new Scope(minEpoch, scopeKeys);
+            return new Scope(evaluationEpoch, minEpoch, scopeKeys);
         }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Txn txn)
+        public static Scope forTopologies(Node.Id node, Topologies topologies, Txn txn, long evaluationEpoch)
         {
-            return forTopologies(node, topologies, txn.keys());
+            return forTopologies(node, topologies, txn.keys(), evaluationEpoch);
         }
 
         public long minRequiredEpoch()

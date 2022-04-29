@@ -12,9 +12,6 @@ import accord.txn.Timestamp;
 import accord.txn.TxnId;
 import accord.txn.Writes;
 
-import static accord.local.Status.Committed;
-import static accord.local.Status.Executed;
-
 public class CheckStatus implements Request
 {
     // order is important
@@ -44,7 +41,7 @@ public class CheckStatus implements Request
 
         public static byte all()
         {
-            return 15;
+            return 31;
         }
     }
 
@@ -138,7 +135,7 @@ public class CheckStatus implements Request
             return c;
         }
 
-        public CheckStatusOk max(CheckStatusOk that)
+        public CheckStatusOk merge(CheckStatusOk that)
         {
             // preferentially select the one that is coordinating, if any
             CheckStatusOk prefer = this.isCoordinating ? this : that;
@@ -214,9 +211,9 @@ public class CheckStatus implements Request
          * reply, the info would potentially be unsafe to act upon when given a higher status
          * (e.g. Accepted executeAt is very different to Committed executeAt))
          */
-        public CheckStatusOk max(CheckStatusOk that)
+        public CheckStatusOk merge(CheckStatusOk that)
         {
-            CheckStatusOk max = super.max(that);
+            CheckStatusOk max = super.merge(that);
             if (this == max || that == max) return max;
 
             CheckStatusOk maxSrc = this.status.compareTo(that.status) >= 0 ? this : that;

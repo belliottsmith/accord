@@ -22,7 +22,7 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
             this.inflight = new HashSet<>(shard.nodes);
         }
 
-        public boolean onSuccess(Node.Id id)
+        protected boolean oneSuccess(Node.Id id)
         {
             if (!inflight.remove(id))
                 return false;
@@ -30,12 +30,20 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
             return true;
         }
 
-        public boolean onFailure(Node.Id id)
+        // return true iff hasReachedQuorum()
+        public boolean success(Node.Id id)
+        {
+            oneSuccess(id);
+            return hasReachedQuorum();
+        }
+
+        // return true iff hasFailed()
+        public boolean failure(Node.Id id)
         {
             if (!inflight.remove(id))
                 return false;
             failures++;
-            return true;
+            return hasFailed();
         }
 
         public boolean hasFailed()
@@ -59,10 +67,10 @@ public class AbstractQuorumTracker<T extends AbstractQuorumTracker.QuorumShardTr
         super(topologies, arrayFactory, trackerFactory);
     }
 
-    // TODO: refactor to return true if this call caused the state change to failed
-    public boolean recordFailure(Node.Id node)
+    // return true iff hasFailed()
+    public boolean failure(Node.Id node)
     {
-        return matchingTrackersForNode(node, QuorumShardTracker::onFailure) > 0;
+        return anyForNode(node, QuorumShardTracker::failure);
     }
 
     public boolean hasReachedQuorum()

@@ -4,12 +4,9 @@ import accord.NetworkFilter;
 import accord.api.MessageSink;
 import accord.coordinate.Timeout;
 import accord.impl.TopologyUtils;
-<<<<<<< HEAD
 import accord.local.CommandStores;
-=======
 import accord.impl.SimpleProgressLog;
 import accord.local.CommandStore;
->>>>>>> 9e2cbf0 (first draft)
 import accord.local.Node;
 import accord.local.Node.Id;
 import accord.topology.KeyRanges;
@@ -93,13 +90,10 @@ public class MockCluster implements Network, AutoCloseable, Iterable<Node>
                         nowSupplier,
                         () -> store,
                         new TestAgent(),
+                        new Random(),
                         new ThreadPoolScheduler(),
-<<<<<<< HEAD
-                        CommandStores.SingleThread::new);
-=======
                         SimpleProgressLog::new,
-                        CommandStore.Factory.SINGLE_THREAD);
->>>>>>> 9e2cbf0 (first draft)
+                        CommandStores.SingleThread::new);
     }
 
     private void init(Topology topology)

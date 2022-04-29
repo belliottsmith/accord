@@ -66,7 +66,8 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
 
     CheckShardStatus(Node node, TxnId txnId, Txn txn, Key key, Shard shard, byte includeInfo)
     {
-        if (txn == null) throw new AssertionError();
+        Preconditions.checkNotNull(txn);
+        Preconditions.checkState(txn.keys.contains(key));
         this.txnId = txnId;
         this.txn = txn;
         this.key = key;
@@ -119,7 +120,7 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
     private void onOk(CheckStatusOk ok)
     {
         if (max == null) max = ok;
-        else max = max.max(ok);
+        else max = max.merge(ok);
     }
 
     protected void start()

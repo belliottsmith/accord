@@ -46,7 +46,7 @@ public class BeginRecovery extends TxnRequest
 
     public BeginRecovery(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, ballot);
+        this(Scope.forTopologies(to, topologies, txn, txnId.epoch), txnId, txn, homeKey, ballot);
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
@@ -281,7 +281,9 @@ public class BeginRecovery extends TxnRequest
     private static Stream<Command> uncommittedStartedBefore(CommandStore commandStore, TxnId startedBefore, Keys keys)
     {
         return keys.stream().flatMap(key -> {
-            CommandsForKey forKey = commandStore.commandsForKey(key);
+            CommandsForKey forKey = commandStore.maybeCommandsForKey(key);
+            if (forKey == null)
+                return Stream.of();
             return forKey.uncommitted.headMap(startedBefore, false).values().stream();
         });
     }
@@ -289,7 +291,9 @@ public class BeginRecovery extends TxnRequest
     private static Stream<Command> committedStartedBefore(CommandStore commandStore, TxnId startedBefore, Keys keys)
     {
         return keys.stream().flatMap(key -> {
-            CommandsForKey forKey = commandStore.commandsForKey(key);
+            CommandsForKey forKey = commandStore.maybeCommandsForKey(key);
+            if (forKey == null)
+                return Stream.of();
             return forKey.committedById.headMap(startedBefore, false).values().stream();
         });
     }
@@ -297,7 +301,9 @@ public class BeginRecovery extends TxnRequest
     private static Stream<Command> uncommittedStartedAfter(CommandStore commandStore, TxnId startedAfter, Keys keys)
     {
         return keys.stream().flatMap(key -> {
-            CommandsForKey forKey = commandStore.commandsForKey(key);
+            CommandsForKey forKey = commandStore.maybeCommandsForKey(key);
+            if (forKey == null)
+                return Stream.of();
             return forKey.uncommitted.tailMap(startedAfter, false).values().stream();
         });
     }
@@ -305,7 +311,9 @@ public class BeginRecovery extends TxnRequest
     private static Stream<Command> committedExecutesAfter(CommandStore commandStore, TxnId startedAfter, Keys keys)
     {
         return keys.stream().flatMap(key -> {
-            CommandsForKey forKey = commandStore.commandsForKey(key);
+            CommandsForKey forKey = commandStore.maybeCommandsForKey(key);
+            if (forKey == null)
+                return Stream.of();
             return forKey.committedByExecuteAt.tailMap(startedAfter, false).values().stream();
         });
     }

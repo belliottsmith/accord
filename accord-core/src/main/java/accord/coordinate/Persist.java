@@ -44,7 +44,7 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
     @Override
     public void onSuccess(Id from, ApplyOk response)
     {
-        if (tracker.recordSuccess(from) && tracker.hasReachedQuorum() && !isDone())
+        if (tracker.success(from) && !isDone())
         {
             // TODO: send to non-home replicas also, so they may clear their log more easily?
             // TODO (now): decide if we send to all home replicas across all epochs, or just original epoch or latest?
@@ -59,7 +59,7 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
         if (failure == null) failure = throwable;
         else failure.addSuppressed(throwable);
 
-        if (tracker.recordFailure(from) && tracker.hasFailed())
+        if (tracker.failure(from))
             tryFailure(failure);
     }
 }

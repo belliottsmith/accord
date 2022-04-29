@@ -1,5 +1,6 @@
 package accord.impl.mock;
 
+import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
 import accord.local.*;
 import accord.messages.*;
@@ -37,6 +38,7 @@ public class EpochSync implements Runnable
     {
         private final TxnId txnId;
         private final Txn txn;
+        private final Key homeKey;
         private final Timestamp executeAt;
         private final Dependencies deps;
 
@@ -45,6 +47,7 @@ public class EpochSync implements Runnable
             Preconditions.checkArgument(command.hasBeen(Status.Committed));
             this.txnId = command.txnId();
             this.txn = command.txn();
+            this.homeKey = command.homeKey();
             this.executeAt = command.executeAt();
             this.deps = command.savedDeps();
         }
@@ -54,7 +57,7 @@ public class EpochSync implements Runnable
         {
             node.forEachLocal(commandStore -> {
                 Command command = commandStore.command(txnId);
-                command.commit(txn, deps, executeAt);
+                command.commit(txn, homeKey, deps, executeAt);
             });
             node.reply(from, replyContext, SyncAck.INSTANCE);
         }
@@ -92,7 +95,7 @@ public class EpochSync implements Runnable
         @Override
         public synchronized void onSuccess(Node.Id from, SyncAck response)
         {
-            tracker.recordSuccess(from);
+            tracker.success(from);
             if (tracker.hasReachedQuorum())
                 setSuccess(null);
         }
@@ -100,7 +103,7 @@ public class EpochSync implements Runnable
         @Override
         public synchronized void onFailure(Node.Id from, Throwable throwable)
         {
-            tracker.recordFailure(from);
+            tracker.failure(from);
             if (tracker.hasFailed())
                 tryFailure(throwable);
         }

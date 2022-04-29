@@ -1,7 +1,7 @@
 package accord.messages;
 
-import accord.api.KeyRange;
 import accord.messages.TxnRequest.Scope;
+import accord.topology.KeyRange;
 import accord.topology.Topologies;
 import accord.topology.Topology;
 import accord.txn.Keys;
@@ -17,7 +17,7 @@ public class TxnRequestScopeTest
 {
     private static Scope scope(long epoch, Keys keys)
     {
-        return new Scope(epoch, keys);
+        return new Scope(epoch, epoch, keys);
     }
 
     @Test
@@ -33,9 +33,9 @@ public class TxnRequestScopeTest
         topologies.add(topology1);
 
         Assertions.assertEquals(scope(1, keys(150)),
-                                Scope.forTopologies(id(1), topologies, keys));
+                                Scope.forTopologies(id(1), topologies, keys, 1));
         Assertions.assertEquals(scope(2, keys(150)),
-                                Scope.forTopologies(id(4), topologies, keys));
+                                Scope.forTopologies(id(4), topologies, keys, 1));
     }
 
     @Test
@@ -56,8 +56,8 @@ public class TxnRequestScopeTest
         topologies.add(topology2);
         topologies.add(topology1);
         Assertions.assertEquals(scope(2, keys(150, 250)),
-                                Scope.forTopologies(id(1), topologies, keys));
+                                Scope.forTopologies(id(1), topologies, keys, 1));
         Assertions.assertEquals(scope(2, keys(250, 150)),
-                                Scope.forTopologies(id(4), topologies, keys));
+                                Scope.forTopologies(id(4), topologies, keys, 1));
     }
 }

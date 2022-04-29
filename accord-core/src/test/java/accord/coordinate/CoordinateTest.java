@@ -30,12 +30,7 @@ public class CoordinateTest
 
             TxnId txnId = new TxnId(1, 100, 0, node.id());
             Txn txn = writeTxn(keys(10));
-<<<<<<< HEAD
-            Result result = Coordinate.execute(node, txnId, txn).get();
-=======
-            CompletionStage<Result> stage = Coordinate.execute(node, txnId, txn, txn.keys().get(0));
-            Result result = stage.toCompletableFuture().get();
->>>>>>> 9e2cbf0 (first draft)
+            Result result = Coordinate.execute(node, txnId, txn, txn.keys().get(0)).get();
             Assertions.assertEquals(MockStore.RESULT, result);
         }
     }
@@ -50,14 +45,8 @@ public class CoordinateTest
             Node node = cluster.get(1);
             Assertions.assertNotNull(node);
 
-<<<<<<< HEAD
-            TxnId txnId = new TxnId(1, 100, 0, node.id());
             Txn txn = writeTxn(keys(10));
-            Result result = Coordinate.execute(node, txnId, txn).get();
-=======
-            Txn txn = writeTxn(keys(10));
-            Result result = cluster.get(id(1)).coordinate(txn).toCompletableFuture().get();
->>>>>>> 9e2cbf0 (first draft)
+            Result result = cluster.get(id(1)).coordinate(txn).get();
             Assertions.assertEquals(MockStore.RESULT, result);
         }
     }
@@ -66,12 +55,7 @@ public class CoordinateTest
     {
         TxnId txnId = new TxnId(1, clock, 0, node.id());
         Txn txn = writeTxn(keys);
-<<<<<<< HEAD
-        Result result = Coordinate.execute(node, txnId, txn).get();
-=======
-        Result result = Coordinate.execute(node, txnId, txn, node.selectHomeKey(txn.keys))
-                                  .toCompletableFuture().get();
->>>>>>> 9e2cbf0 (first draft)
+        Result result = Coordinate.execute(node, txnId, txn, node.selectHomeKey(txnId, txn.keys)).get();
         Assertions.assertEquals(MockStore.RESULT, result);
         return txnId;
     }

@@ -142,7 +142,8 @@ public class Main
             topology = topologyFactory.toTopology(init.cluster);
             sink = new StdoutSink(System::currentTimeMillis, scheduler, start, init.self, out, err);
             on = new Node(init.self, sink, new SimpleConfigService(topology), System::currentTimeMillis,
-                          MaelstromStore::new, MaelstromAgent.INSTANCE, scheduler, SimpleProgressLog::new, CommandStores.SingleThread::new);
+                          MaelstromStore::new, MaelstromAgent.INSTANCE, new Random(), scheduler,
+                          SimpleProgressLog::new, CommandStores.SingleThread::new);
             err.println("Initialized node " + init.self);
             err.flush();
             sink.send(packet.src, new Body(Type.init_ok, Body.SENTINEL_MSG_ID, init.msg_id));

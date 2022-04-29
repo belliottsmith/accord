@@ -14,6 +14,7 @@ import accord.txn.Ballot;
 import accord.messages.Callback;
 import accord.local.Node;
 import accord.local.Node.Id;
+import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Dependencies;
 import accord.txn.Txn;
@@ -48,11 +49,9 @@ class Recover extends Propose implements Callback<RecoverReply>
         {
             if (isDone()) return;
 
-            tracker.recordSuccess(from);
-
-            if (tracker.hasReachedQuorum())
+            if (tracker.success(from))
             {
-                new Recover(node, ballot, txnId, txn, homeKey, tracker.topologies()).addCallback((success, failure) -> {
+                new Recover(node, ballot, txnId, txn, homeKey, node.topology().forTxn(txn, txnId.epoch)).addCallback((success, failure) -> {
                     if (success != null) trySuccess(success);
                     else tryFailure(failure);
                 });
@@ -64,8 +63,7 @@ class Recover extends Propose implements Callback<RecoverReply>
         {
             if (isDone()) return;
 
-            tracker.recordFailure(from);
-            if (tracker.hasFailed())
+            if (tracker.failure(from))
                 tryFailure(new Timeout());
         }
     }
@@ -233,8 +231,7 @@ class Recover extends Propose implements Callback<RecoverReply>
         if (isDone())
             return;
 
-        tracker.recordFailure(from);
-        if (tracker.hasFailed())
+        if (tracker.failure(from))
             tryFailure(new Timeout());
     }
 }

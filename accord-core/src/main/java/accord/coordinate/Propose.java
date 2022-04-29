@@ -45,6 +45,7 @@ class Propose extends AsyncPromise<Agreed>
         this.proposed = executeAt;
         this.acceptOks = new ArrayList<>();
         this.acceptTracker = new QuorumTracker(topologies);
+        // TODO (now): acceptTracker should be a callback itself, with a reference to us for propagating failure
         node.send(acceptTracker.nodes(), to -> new Accept(to, topologies, ballot, txnId, txn, homeKey, executeAt, deps), new Callback<AcceptReply>()
         {
             @Override
@@ -56,8 +57,7 @@ class Propose extends AsyncPromise<Agreed>
             @Override
             public void onFailure(Id from, Throwable throwable)
             {
-                acceptTracker.recordFailure(from);
-                if (acceptTracker.hasFailed())
+                if (acceptTracker.failure(from))
                     tryFailure(new Timeout());
             }
         });
@@ -76,9 +76,7 @@ class Propose extends AsyncPromise<Agreed>
 
         AcceptOk ok = (AcceptOk) reply;
         acceptOks.add(ok);
-        acceptTracker.recordSuccess(from);
-
-        if (acceptTracker.hasReachedQuorum())
+        if (acceptTracker.success(from))
             onAccepted();
     }
 

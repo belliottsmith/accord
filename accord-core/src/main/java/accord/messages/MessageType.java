@@ -12,6 +12,8 @@ public enum MessageType
     COMMIT_REQ,
     APPLY_REQ,
     APPLY_RSP,
+    APPLY_AND_CHECK_REQ,
+    APPLY_AND_CHECK_RSP,
     READ_REQ,
     READ_RSP,
     RECOVER_REQ,

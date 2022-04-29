@@ -85,9 +85,9 @@ public class Txn
         return "{read:" + read.toString() + (update != null ? ", update:" + update : "") + '}';
     }
 
-    public Data read(Command command, Keys keyScope)
+    public Data read(Command command, Keys keys)
     {
-        return keyScope.foldl(command.commandStore.ranges(), (key, accumulate) -> {
+        return keys.foldl(command.commandStore.ranges(command.executeAt().epoch), (key, accumulate) -> {
             CommandStore commandStore = command.commandStore;
             if (!commandStore.hashIntersects(key))
                 return accumulate;

@@ -34,7 +34,7 @@ public class Accept extends TxnRequest
 
     public Accept(Node.Id dst, Topologies topologies, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
-        this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, homeKey, executeAt, deps);
+        this(Scope.forTopologies(dst, topologies, txn, txnId.epoch), ballot, txnId, txn, homeKey, executeAt, deps);
     }
 
     public void process(Node on, Node.Id replyToNode, ReplyContext replyContext)

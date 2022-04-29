@@ -24,22 +24,26 @@ import static accord.messages.CheckStatus.IncludeInfo.HomeKey;
  */
 public class CheckOnUncommitted extends CheckShardStatus
 {
-    @Nullable final Timestamp maxWaiting; // the maximum execution timestamp of a transaction that has been committed with this as a dependency
+    // the maximum execution timestamp of a transaction that has been committed with this as a dependency
+    // if we receive a quorum of responses in the home shard that have not witnessed the transaction, then we know
+    // it must take a later executeAt
+    @Nullable final Timestamp maxExecuteAtWithTxnAsDependency;
 
-    CheckOnUncommitted(Node node, TxnId txnId, Txn txn, Key homeKey, @Nullable Timestamp maxWaiting, Shard homeShard, byte includeInfo)
+    CheckOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard,
+                       @Nullable Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
     {
-        super(node, txnId, txn, homeKey, homeShard, includeInfo);
-        this.maxWaiting = maxWaiting;
+        super(node, txnId, txn, someKey, someShard, includeInfo);
+        this.maxExecuteAtWithTxnAsDependency = maxExecuteAtWithTxnAsDependency;
     }
 
-    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, Timestamp maxWaiting)
+    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, Timestamp maxExecuteAtWithTxnAsDependency)
     {
-        return checkOnUncommitted(node, txnId, txn, homeKey, homeShard, maxWaiting, (byte)0);
+        return checkOnUncommitted(node, txnId, txn, someKey, someShard, maxExecuteAtWithTxnAsDependency, (byte)0);
     }
 
-    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, Timestamp maxWaiting, byte includeInfo)
+    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
     {
-        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, homeKey, maxWaiting, homeShard, (byte) (includeInfo | HomeKey.and(Dependencies.and(ExecuteAt))));
+        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, someKey, someShard, maxExecuteAtWithTxnAsDependency, (byte) (includeInfo | HomeKey.and(Dependencies.and(ExecuteAt))));
         checkOnUncommitted.start();
         return checkOnUncommitted;
     }
@@ -61,14 +65,18 @@ public class CheckOnUncommitted extends CheckShardStatus
         try
         {
             CheckStatusOkFull full = (CheckStatusOkFull) max;
-            node.local(txn.keys).forEach(commandStore -> {
+            node.forEachLocal(txn.keys, commandStore -> {
                 Command command = commandStore.command(txnId);
                 switch (full.status)
                 {
                     default: throw new AssertionError();
                     case NotWitnessed:
-                        if (maxWaiting != null)
-                            command.mustExecuteAfter(maxWaiting);
+                        // TODO (now): the home shard might be out of date here and might not have been contacted
+                        //             since we don't guarantee talking to the earlier shards. either make sure we contact
+                        //             them, or else
+                        // if not witnessed by a quorum of the home shard
+                        if (maxExecuteAtWithTxnAsDependency != null)
+                            command.mustExecuteAfter(maxExecuteAtWithTxnAsDependency);
                         break;
                     case PreAccepted:
                     case Accepted:

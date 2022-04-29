@@ -219,8 +219,8 @@ public class BurnTest
         {
             for (int i = 0 ; i < requests.length ; ++i)
             {
-                logger.debug("{}", requests[i]);
-                logger.debug("\t\t" + replies[i]);
+                logger.info("{}", requests[i]);
+                logger.info("\t\t" + replies[i]);
             }
             throw new AssertionError("Incomplete set of responses");
         }
@@ -228,7 +228,8 @@ public class BurnTest
 
     public static void main(String[] args) throws Exception
     {
-        Long overrideSeed = null;
+//        Long overrideSeed = null;
+        Long overrideSeed = -6956656300333290359L;
         do
         {
             long seed = overrideSeed != null ? overrideSeed : ThreadLocalRandom.current().nextLong();
@@ -245,36 +246,12 @@ public class BurnTest
                      200,
                      10 + random.nextInt(30));
             }
-<<<<<<< HEAD
             catch (Throwable t)
             {
                 logger.error("Exception running burn test for seed {}:", seed, t);
                 throw t;
             }
         } while (overrideSeed == null);
-=======
-        });
-
-        while (true)
-        {
-            long seed = ThreadLocalRandom.current().nextLong();
-//            long seed = 5609336399949379740L;
-            System.out.println("Seed " + seed);
-            Random random = new Random(seed);
-            List<Id> clients =  generateIds(true, 1 + random.nextInt(4));
-            List<Id> nodes =  generateIds(false, 5 + random.nextInt(5));
-            burn(random, new TopologyFactory<>(nodes.size() == 5 ? 3 : (2 + random.nextInt(3)), IntHashKey.ranges(4 + random.nextInt(12))),
-                 clients,
-                 nodes,
-                 5 + random.nextInt(15),
-                 100,
-                 10 + random.nextInt(30),
-//                 System.out,
-//                 System.err
-                 devnull, devnull
-            );
-        }
->>>>>>> 9e2cbf0 (first draft)
     }
 
     private static List<Id> generateIds(boolean clients, int count)

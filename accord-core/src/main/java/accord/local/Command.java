@@ -145,7 +145,10 @@ public class Command implements Listener, Consumer<Listener>
         this.executeAt = witnessed;
         this.status = PreAccepted;
 
-        txn.keys().forEach(key -> commandStore.commandsForKey(key).register(this));
+        txn.keys().forEach(key -> {
+            if (commandStore.hashIntersects(key))
+                commandStore.commandsForKey(key).register(this);
+        });
         listeners.forEach(this);
         return true;
     }
@@ -227,6 +230,8 @@ public class Command implements Listener, Consumer<Listener>
                 waitingOnApply = null;
         }
 
+        // TODO: we might not be the homeShard for later phases if we are no longer replicas of the range at executeAt;
+        //       this should be fine, but it might be helpful to provide this info to the progressLog here?
         if (isHomeShard()) commandStore.progressLog().committed(txnId);
         else commandStore.progressLog().nonHomeCommit(txnId);
 
@@ -285,7 +290,7 @@ public class Command implements Listener, Consumer<Listener>
             case NotWitnessed:
             case PreAccepted:
             case Accepted:
-                if (command.executeAtExclusiveLowerBound == null || command.executeAtExclusiveLowerBound.compareTo(executeAt) < 0)
+                if (command.executeAtExclusiveLowerBound == null || command.executeAtExclusiveLowerBound.compareTo(executeAt) <= 0)
                     break;
 
             case Committed:
@@ -322,7 +327,7 @@ public class Command implements Listener, Consumer<Listener>
             Command blockedBy = blockedBy();
             if (blockedBy != null)
             {
-                commandStore.progressLog().waitingOn(txnId, blockedBy.txnId);
+                commandStore.progressLog().waiting(txnId, blockedBy.txnId);
                 return;
             }
             assert waitingOnApply == null;
@@ -426,6 +431,23 @@ public class Command implements Listener, Consumer<Listener>
         }
     }
 
+    private long homeEpoch()
+    {
+        switch (status)
+        {
+            default: throw new AssertionError();
+            case NotWitnessed:
+            case PreAccepted:
+            case Accepted:
+            case Committed:
+                return txnId.epoch;
+            case ReadyToExecute:
+            case Executed:
+            case Applied:
+                return executeAt.epoch;
+        }
+    }
+
     private boolean isHomeShard()
     {
         return isHomeShard(homeKey());
@@ -433,7 +455,8 @@ public class Command implements Listener, Consumer<Listener>
 
     private boolean isHomeShard(Key homeKey)
     {
-        return commandStore.ranges().contains(homeKey);
+        // TODO (now): isHomeShard might depend on the phase
+        return commandStore.ranges(homeEpoch()).contains(homeKey);
     }
 
     private Id coordinator()

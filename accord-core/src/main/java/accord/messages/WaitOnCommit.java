@@ -96,7 +96,7 @@ public class WaitOnCommit extends TxnRequest
 
     public WaitOnCommit(Id to, Topologies topologies, TxnId txnId, Keys keys)
     {
-        this(Scope.forTopologies(to, topologies, keys), txnId, keys);
+        this(Scope.forTopologies(to, topologies, keys, txnId.epoch), txnId, keys);
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)

@@ -265,7 +265,8 @@ public class Cluster implements Scheduler
             {
                 MessageSink messageSink = sinks.create(node, randomSupplier.get());
                 lookup.put(node, new Node(node, messageSink, new SimpleConfigService(topology),
-                                          nowSupplier.get(), MaelstromStore::new, MaelstromAgent.INSTANCE, sinks, SimpleProgressLog::new, CommandStores.SingleThread::new));
+                                          nowSupplier.get(), MaelstromStore::new, MaelstromAgent.INSTANCE,
+                                          randomSupplier.get(), sinks, SimpleProgressLog::new, CommandStores.SingleThread::new));
             }
 
             List<Id> nodesList = new ArrayList<>(Arrays.asList(nodes));

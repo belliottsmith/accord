@@ -42,7 +42,7 @@ public class InformHomeOfTxn extends CompletableFuture<Void> implements Callback
     {
         if (response.isOk())
         {
-            if (tracker.onSuccess(from) && tracker.hasReachedQuorum())
+            if (tracker.success(from))
                 complete(null);
         }
         else
@@ -58,7 +58,7 @@ public class InformHomeOfTxn extends CompletableFuture<Void> implements Callback
         else failure.addSuppressed(throwable);
 
         // TODO: if we fail and have an incorrect topology, trigger refresh
-        if (tracker.onFailure(from) && tracker.hasFailed())
+        if (tracker.failure(from))
             completeExceptionally(failure);
     }
 }

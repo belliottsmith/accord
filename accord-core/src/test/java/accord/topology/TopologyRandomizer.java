@@ -1,6 +1,5 @@
 package accord.topology;
 
-import accord.api.KeyRange;
 import accord.burn.TopologyUpdate;
 import accord.impl.IntHashKey;
 import accord.local.Node;

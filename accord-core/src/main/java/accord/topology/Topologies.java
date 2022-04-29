@@ -1,6 +1,7 @@
 package accord.topology;
 
 import accord.local.Node;
+import accord.txn.Keys;
 import accord.utils.IndexedConsumer;
 import com.google.common.base.Preconditions;
 
@@ -10,6 +11,8 @@ import java.util.function.Consumer;
 public interface Topologies
 {
     Topology current();
+
+    int findEarliestSinceEpoch(long epoch);
 
     default long currentEpoch()
     {
@@ -108,6 +111,12 @@ public interface Topologies
         }
 
         @Override
+        public int findEarliestSinceEpoch(long epoch)
+        {
+            return 0;
+        }
+
+        @Override
         public boolean fastPathPermitted()
         {
             return fastPathPermitted;
@@ -186,6 +195,20 @@ public interface Topologies
         public Topology current()
         {
             return get(0);
+        }
+
+        @Override
+        public int findEarliestSinceEpoch(long epoch)
+        {
+            long current = current().epoch;
+            if (current < epoch)
+                return 0;
+
+            long index = current - epoch;
+            if (index > topologies.size())
+                return topologies.size() - 1;
+
+            return (int) index;
         }
 
         @Override

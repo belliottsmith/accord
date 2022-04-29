@@ -98,16 +98,19 @@ public interface ProgressLog
      * The parameter is a command that some other command's execution is most proximally blocked by.
      * This may be invoked by either the home or non-home command store.
      *
-     * If invoked by the non-home command store on a transaction that has not yet been committed, this must
-     * eventually trigger contact with the home shard in order to check on the transaction's progress
-     * (unless the transaction is committed first). This is to avoid unnecessary additional messages being exchanged
-     * in the common case, where a transaction may be committed successfully to members of its home shard, but not
-     * to all non-home shards. In such a case the transaction may be a false-dependency of another transaction that
+     * If invoked by the non-home command store for a {@code blockedBy} transaction that has not yet been committed, this
+     * must eventually trigger contact with the home shard of this {@code blockedBy} transaction in order to check on the
+     * transaction's progress (unless the transaction is committed first). This is to avoid unnecessary additional messages
+     * being exchanged in the common case, where a transaction may be committed successfully to members of its home shard,
+     * but not to all non-home shards. In such a case the transaction may be a false-dependency of another transaction that
      * needs to perform a read, and all nodes which may do so are waiting for the commit record to arrive.
+     *
+     * If a quorum of the home shard does not know of the transaction, then it can be removed from the dependency set
+     * of {@code waiting}, which may proceed without waiting for it as it must take a later {@code executionAt}.
      *
      * In all other scenarios, the implementation is free to choose its course of action.
      *
      * TODO (aborts): waitingOnTxn should not be a parameter; only known locally involved keys (not necessarily all keys)
      */
-    void waitingOn(TxnId waiting, TxnId waitingOn);
+    void waiting(TxnId waiting, TxnId blockedBy);
 }
