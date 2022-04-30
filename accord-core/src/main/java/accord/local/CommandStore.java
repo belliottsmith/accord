@@ -41,10 +41,8 @@ public abstract class CommandStore
                             Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent,
                             DataStore store,
-                            Scheduler scheduler,
                             ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges,
-                            Supplier<Topology> localTopologySupplier);
+                            KeyRanges ranges);
     }
 
     private final int generation;
@@ -56,7 +54,6 @@ public abstract class CommandStore
     private final DataStore store;
     private final ProgressLog progressLog;
     private final KeyRanges ranges;
-    private final Supplier<Topology> localTopologySupplier;
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
@@ -68,10 +65,8 @@ public abstract class CommandStore
                         Function<Timestamp, Timestamp> uniqueNow,
                         Agent agent,
                         DataStore store,
-                        Scheduler scheduler,
                         ProgressLog.Factory progressLogFactory,
-                        KeyRanges ranges,
-                        Supplier<Topology> localTopologySupplier)
+                        KeyRanges ranges)
     {
         Preconditions.checkArgument(shardIndex < numShards);
         this.generation = generation;
@@ -83,7 +78,6 @@ public abstract class CommandStore
         this.store = store;
         this.progressLog = progressLogFactory.create(this);
         this.ranges = ranges;
-        this.localTopologySupplier = localTopologySupplier;
     }
 
     public Command command(TxnId txnId)
@@ -136,10 +130,10 @@ public abstract class CommandStore
         return node;
     }
 
-    public long epoch()
+    public long latestEpoch()
     {
         // TODO: why not inject the epoch to each command store?
-        return localTopologySupplier.get().epoch();
+        return node.epoch();
     }
 
     public KeyRanges ranges(long epoch)
@@ -268,10 +262,10 @@ public abstract class CommandStore
     {
         public Synchronized(int generation, int index, int numShards, Node node,
                             Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store,
-                            Scheduler scheduler, ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges, Supplier<Topology> localTopologySupplier)
+                            ProgressLog.Factory progressLogFactory,
+                            KeyRanges ranges)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, localTopologySupplier);
+            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
         }
 
         @Override
@@ -332,10 +326,10 @@ public abstract class CommandStore
 
         public SingleThread(int generation, int index, int numShards, Node node,
                             Function<Timestamp, Timestamp> uniqueNow,
-                            Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges, Supplier<Topology> localTopologySupplier)
+                            Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
+                            KeyRanges ranges)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, localTopologySupplier);
+            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
                 thread.setName(CommandStore.class.getSimpleName() + '[' + node.id() + ':' + index + ']');
@@ -372,10 +366,10 @@ public abstract class CommandStore
 
         public Debug(int generation, int index, int numShards, Node node,
                      Function<Timestamp, Timestamp> uniqueNow,
-                     Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory,
-                     KeyRanges ranges, Supplier<Topology> localTopologySupplier)
+                     Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
+                     KeyRanges ranges)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, localTopologySupplier);
+            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
         }
 
         private void assertThread()

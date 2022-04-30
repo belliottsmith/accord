@@ -94,7 +94,6 @@ public class Node implements ConfigurationService.Listener
         return 8; // TODO: make configurable
     }
 
-    private final CommandStores commandStores;
     private final Id id;
     private final MessageSink messageSink;
     private final ConfigurationService configService;
@@ -117,14 +116,14 @@ public class Node implements ConfigurationService.Listener
         this.id = id;
         this.messageSink = messageSink;
         this.configService = configService;
-        this.topology = new TopologyManager(id, configService::reportEpoch);
+        CommandStores emptyCommandStores = factory.create(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), progressLogFactory.apply(this));
+        this.topology = new TopologyManager(configService::reportEpoch, emptyCommandStores);
         Topology topology = configService.currentTopology();
         this.nowSupplier = nowSupplier;
         this.now = new AtomicReference<>(new Timestamp(topology.epoch(), nowSupplier.getAsLong(), 0, id));
         this.agent = agent;
         this.random = random;
         this.scheduler = scheduler;
-        this.commandStores = factory.create(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), scheduler, progressLogFactory.apply(this));
 
         configService.registerListener(this);
         onTopologyUpdate(topology, false);
@@ -149,7 +148,6 @@ public class Node implements ConfigurationService.Listener
     {
         if (topology.epoch() <= this.topology.epoch())
             return;
-        commandStores.updateTopology(topology);
         this.topology.onTopologyUpdate(topology);
         if (acknowledge)
             configService.acknowledgeEpoch(topology.epoch());
@@ -174,7 +172,7 @@ public class Node implements ConfigurationService.Listener
 
     public void shutdown()
     {
-        commandStores.shutdown();
+        topology.current().stores().shutdown();
     }
 
     public Timestamp uniqueNow()

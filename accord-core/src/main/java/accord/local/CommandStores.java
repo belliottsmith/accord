@@ -3,10 +3,8 @@ package accord.local;
 import accord.api.Agent;
 import accord.api.Key;
 import accord.api.DataStore;
-import accord.local.CommandStores.StoreGroups.Fold;
 import accord.messages.TxnRequest;
 import accord.api.ProgressLog;
-import accord.api.Scheduler;
 import accord.topology.KeyRanges;
 import accord.topology.Topology;
 import accord.txn.Keys;
@@ -35,8 +33,75 @@ public abstract class CommandStores
                              Function<Timestamp, Timestamp> uniqueNow,
                              Agent agent,
                              DataStore store,
-                             Scheduler scheduler,
                              ProgressLog.Factory progressLogFactory);
+    }
+
+    interface Fold<I1, I2, O>
+    {
+        O fold(CommandStore store, I1 i1, I2 i2, O accumulator);
+    }
+
+    private static class Supplier
+    {
+        private final Node node;
+        private final Function<Timestamp, Timestamp> uniqueNow;
+        private final Agent agent;
+        private final DataStore store;
+        private final ProgressLog.Factory progressLogFactory;
+        private final CommandStore.Factory shardFactory;
+        private final int numShards;
+
+        Supplier(Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory, int numShards)
+        {
+            this.node = node;
+            this.uniqueNow = uniqueNow;
+            this.agent = agent;
+            this.store = store;
+            this.progressLogFactory = progressLogFactory;
+            this.shardFactory = shardFactory;
+            this.numShards = numShards;
+        }
+
+        private CommandStore create(int generation, int shardIndex, KeyRanges ranges)
+        {
+            return shardFactory.create(generation, shardIndex, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
+        }
+
+        private CommandStores updateTopology(CommandStores stores, Topology newTopology)
+        {
+            Preconditions.checkArgument(!newTopology.isSubset(), "Use full topology for CommandStores.updateTopology");
+
+            CommandStores current = stores;
+            if (newTopology.epoch() <= current.global.epoch())
+                return stores;
+
+            Topology newLocalTopology = newTopology.forNode(node.id());
+            KeyRanges added = newLocalTopology.ranges().difference(current.local.ranges());
+
+            for (StoreGroup group : stores.groups)
+            {
+                // FIXME: remove this (and the corresponding check in TopologyRandomizer) once lower bounds are implemented.
+                //  In the meantime, the logic needed to support acquiring ranges that we previously replicated is pretty
+                //  convoluted without the ability to jettison epochs.
+                Preconditions.checkState(!group.ranges.intersects(added));
+            }
+
+            if (added.isEmpty())
+                return stores.update(stores.groups, newTopology, newLocalTopology);
+
+            int newGeneration = current.groups.length;
+            StoreGroup[] newGroups = new StoreGroup[current.groups.length + 1];
+            CommandStore[] newStores = new CommandStore[numShards];
+            System.arraycopy(current.groups, 0, newGroups, 0, current.groups.length);
+
+            for (int i=0; i<numShards; i++)
+                newStores[i] = create(newGeneration, i, added);
+
+            newGroups[current.groups.length] = new StoreGroup(newStores, added);
+
+            return stores.update(newGroups, newTopology, newLocalTopology);
+        }
+
     }
 
     static class StoreGroup
@@ -83,141 +148,51 @@ public abstract class CommandStores
         }
     }
 
-    static class StoreGroups
+    final Supplier supplier;
+
+    final StoreGroup[] groups;
+    final Topology global;
+    final Topology local;
+    final int size;
+
+    private CommandStores(Supplier supplier, StoreGroup[] groups, Topology global, Topology local)
     {
-        final StoreGroup[] groups;
-        final Topology global;
-        final Topology local;
-        final int size;
-
-        public StoreGroups(StoreGroup[] groups, Topology global, Topology local)
-        {
-            this.groups = groups;
-            this.global = global;
-            this.local = local;
-            int size = 0;
-            for (StoreGroup group : groups)
-                size += group.stores.length;
-            this.size = size;
-        }
-
-        StoreGroups withNewTopology(Topology global, Topology local)
-        {
-            return new StoreGroups(groups, global, local);
-        }
-
-        public int size()
-        {
-            return size;
-        }
-
-        private <I1, I2, O> O foldl(int startGroup, long bitset, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, O accumulator)
-        {
-            int groupIndex = startGroup;
-            StoreGroup group = groups[groupIndex];
-            int offset = 0;
-            while (true)
-            {
-                int i = Long.numberOfTrailingZeros(bitset) - offset;
-                while (i < group.stores.length)
-                {
-                    accumulator = fold.fold(group.stores[i], param1, param2, accumulator);
-                    bitset ^= Long.lowestOneBit(bitset);
-                    i = Long.numberOfTrailingZeros(bitset) - offset;
-                }
-
-                if (++groupIndex == groups.length)
-                    break;
-
-                if (bitset == 0)
-                    break;
-
-                offset += group.stores.length;
-                group = groups[groupIndex];
-                if (offset + group.stores.length > 64)
-                    break;
-            }
-            return accumulator;
-        }
-
-        interface Fold<I1, I2, O>
-        {
-            O fold(CommandStore store, I1 i1, I2 i2, O accumulator);
-        }
-
-        <S, I1, I2, O> O foldl(ToLongBiFunction<StoreGroup, S> select, S scope, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, IntFunction<? extends O> factory)
-        {
-            O accumulator = null;
-            int startGroup = 0;
-            while (startGroup < groups.length)
-            {
-                long bits = select.applyAsLong(groups[startGroup], scope);
-                if (bits == 0)
-                {
-                    ++startGroup;
-                    continue;
-                }
-
-                int offset = groups[startGroup].stores.length;
-                int endGroup = startGroup + 1;
-                while (endGroup < groups.length)
-                {
-                    StoreGroup group = groups[endGroup];
-                    if (offset + group.stores.length > 64)
-                        break;
-
-                    bits += select.applyAsLong(group, scope) << offset;
-                    offset += group.stores.length;
-                    ++endGroup;
-                }
-
-                if (accumulator == null)
-                    accumulator = factory.apply(Long.bitCount(bits));
-
-                accumulator = foldl(startGroup, bits, fold, param1, param2, accumulator);
-                startGroup = endGroup;
-            }
-
-            return accumulator;
-        }
+        this.supplier = supplier;
+        this.groups = groups;
+        this.global = global;
+        this.local = local;
+        int size = 0;
+        for (StoreGroup group : groups)
+            size += group.stores.length;
+        this.size = size;
     }
 
-    private final Node node;
-    private final Function<Timestamp, Timestamp> uniqueNow;
-    private final Agent agent;
-    private final DataStore store;
-    private final Scheduler scheduler;
-    private final ProgressLog.Factory progressLogFactory;
-    private final CommandStore.Factory shardFactory;
-    private final int numShards;
-    protected volatile StoreGroups groups = new StoreGroups(new StoreGroup[0], Topology.EMPTY, Topology.EMPTY);
+    abstract CommandStores update(StoreGroup[] groups, Topology global, Topology local);
+
+    public Topology local()
+    {
+        return local;
+    }
+
+    public Topology global()
+    {
+        return global;
+    }
+
+    public int size()
+    {
+        return size;
+    }
 
     public CommandStores(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store,
-                         Scheduler scheduler, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
+                         ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
     {
-        this.node = node;
-        this.numShards = num;
-        this.uniqueNow = uniqueNow;
-        this.agent = agent;
-        this.store = store;
-        this.scheduler = scheduler;
-        this.progressLogFactory = progressLogFactory;
-        this.shardFactory = shardFactory;
-    }
-
-    private CommandStore createCommandStore(int generation, int shardIndex, KeyRanges ranges)
-    {
-        return shardFactory.create(generation, shardIndex, numShards, node, uniqueNow, agent, store, scheduler, progressLogFactory, ranges, this::getLocalTopology);
-    }
-
-    private Topology getLocalTopology()
-    {
-        return groups.local;
+        this(new Supplier(node, uniqueNow, agent, store, progressLogFactory, shardFactory, num), new StoreGroup[0], Topology.EMPTY, Topology.EMPTY);
     }
 
     public synchronized void shutdown()
     {
-        for (StoreGroup group : groups.groups)
+        for (StoreGroup group : groups)
             for (CommandStore commandStore : group.stores)
                 commandStore.shutdown();
     }
@@ -252,12 +227,17 @@ public abstract class CommandStores
 
     public <T extends Collection<CommandStore>> T collect(Keys keys, IntFunction<T> factory)
     {
-        return groups.foldl(StoreGroup::matches, keys, CommandStores::append, null, null, factory);
+        return foldl(StoreGroup::matches, keys, CommandStores::append, null, null, factory);
     }
 
     public <T extends Collection<CommandStore>> T collect(TxnRequest.Scope scope, IntFunction<T> factory)
     {
-        return groups.foldl(StoreGroup::matches, scope, CommandStores::append, null, null, factory);
+        return foldl(StoreGroup::matches, scope, CommandStores::append, null, null, factory);
+    }
+
+    public CommandStores withNewTopology(Topology newTopology)
+    {
+        return supplier.updateTopology(this, newTopology);
     }
 
     private static <T extends Collection<CommandStore>> T append(CommandStore store, Object ignore1, Object ignore2, T to)
@@ -266,48 +246,75 @@ public abstract class CommandStores
         return to;
     }
 
-    public synchronized void updateTopology(Topology newTopology)
+    private <I1, I2, O> O foldl(int startGroup, long bitset, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, O accumulator)
     {
-        Preconditions.checkArgument(!newTopology.isSubset(), "Use full topology for CommandStores.updateTopology");
-
-        StoreGroups current = groups;
-        if (newTopology.epoch() <= current.global.epoch())
-            return;
-
-        Topology local = newTopology.forNode(node.id());
-        KeyRanges added = local.ranges().difference(current.local.ranges());
-
-        for (StoreGroup group : groups.groups)
+        int groupIndex = startGroup;
+        StoreGroup group = groups[groupIndex];
+        int offset = 0;
+        while (true)
         {
-            // FIXME: remove this (and the corresponding check in TopologyRandomizer) once lower bounds are implemented.
-            //  In the meantime, the logic needed to support acquiring ranges that we previously replicated is pretty
-            //  convoluted without the ability to jettison epochs.
-            Preconditions.checkState(!group.ranges.intersects(added));
+            int i = Long.numberOfTrailingZeros(bitset) - offset;
+            while (i < group.stores.length)
+            {
+                accumulator = fold.fold(group.stores[i], param1, param2, accumulator);
+                bitset ^= Long.lowestOneBit(bitset);
+                i = Long.numberOfTrailingZeros(bitset) - offset;
+            }
+
+            if (++groupIndex == groups.length)
+                break;
+
+            if (bitset == 0)
+                break;
+
+            offset += group.stores.length;
+            group = groups[groupIndex];
+            if (offset + group.stores.length > 64)
+                break;
+        }
+        return accumulator;
+    }
+
+    <S, I1, I2, O> O foldl(ToLongBiFunction<StoreGroup, S> select, S scope, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, IntFunction<? extends O> factory)
+    {
+        O accumulator = null;
+        int startGroup = 0;
+        while (startGroup < groups.length)
+        {
+            long bits = select.applyAsLong(groups[startGroup], scope);
+            if (bits == 0)
+            {
+                ++startGroup;
+                continue;
+            }
+
+            int offset = groups[startGroup].stores.length;
+            int endGroup = startGroup + 1;
+            while (endGroup < groups.length)
+            {
+                StoreGroup group = groups[endGroup];
+                if (offset + group.stores.length > 64)
+                    break;
+
+                bits += select.applyAsLong(group, scope) << offset;
+                offset += group.stores.length;
+                ++endGroup;
+            }
+
+            if (accumulator == null)
+                accumulator = factory.apply(Long.bitCount(bits));
+
+            accumulator = foldl(startGroup, bits, fold, param1, param2, accumulator);
+            startGroup = endGroup;
         }
 
-        if (added.isEmpty())
-        {
-            groups = groups.withNewTopology(newTopology, local);
-            return;
-        }
-
-        int newGeneration = current.groups.length;
-        StoreGroup[] newGroups = new StoreGroup[current.groups.length + 1];
-        CommandStore[] newStores = new CommandStore[numShards];
-        System.arraycopy(current.groups, 0, newGroups, 0, current.groups.length);
-
-        for (int i=0; i<numShards; i++)
-            newStores[i] = createCommandStore(newGeneration, i, added);
-
-        newGroups[current.groups.length] = new StoreGroup(newStores, added);
-
-        groups = new StoreGroups(newGroups, newTopology, local);
+        return accumulator;
     }
 
     @VisibleForTesting
     public CommandStore unsafeForKey(Key key)
     {
-        for (StoreGroup group : groups.groups)
+        for (StoreGroup group : groups)
         {
             if (group.ranges.contains(key))
             {
@@ -323,39 +330,61 @@ public abstract class CommandStores
 
     public static class Synchronized extends CommandStores
     {
-        public Synchronized(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
+        public Synchronized(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, ProgressLog.Factory progressLogFactory)
         {
-            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.Synchronized::new);
+            super(num, node, uniqueNow, agent, store, progressLogFactory, CommandStore.Synchronized::new);
+        }
+
+        public Synchronized(Supplier supplier, StoreGroup[] groups, Topology global, Topology local)
+        {
+            super(supplier, groups, global, local);
         }
 
         @Override
         protected <S, T> T mapReduce(ToLongBiFunction<StoreGroup, S> select, S scope, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce)
         {
-            return groups.foldl(select, scope, (store, f, r, t) -> t == null ? f.apply(store) : r.apply(t, f.apply(store)), map, reduce, ignore -> null);
+            return foldl(select, scope, (store, f, r, t) -> t == null ? f.apply(store) : r.apply(t, f.apply(store)), map, reduce, ignore -> null);
+        }
+
+        @Override
+        CommandStores update(StoreGroup[] groups, Topology global, Topology local)
+        {
+            return new Synchronized(supplier, groups, global, local);
         }
 
         @Override
         protected <S> void forEach(ToLongBiFunction<StoreGroup, S> select, S scope, Consumer<? super CommandStore> forEach)
         {
-            groups.foldl(select, scope, (store, f, r, t) -> { f.accept(store); return null; }, forEach, null, ignore -> FALSE);
+            foldl(select, scope, (store, f, r, t) -> { f.accept(store); return null; }, forEach, null, ignore -> FALSE);
         }
     }
 
     public static class SingleThread extends CommandStores
     {
-        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
+        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, ProgressLog.Factory progressLogFactory)
         {
-            this(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.SingleThread::new);
+            this(num, node, uniqueNow, agent, store, progressLogFactory, CommandStore.SingleThread::new);
         }
 
-        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
+        public SingleThread(Supplier supplier, StoreGroup[] groups, Topology global, Topology local)
         {
-            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, shardFactory);
+            super(supplier, groups, global, local);
+        }
+
+        @Override
+        CommandStores update(StoreGroup[] groups, Topology global, Topology local)
+        {
+            return new SingleThread(supplier, groups, global, local);
+        }
+
+        public SingleThread(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, ProgressLog.Factory progressLogFactory, CommandStore.Factory shardFactory)
+        {
+            super(num, node, uniqueNow, agent, store, progressLogFactory, shardFactory);
         }
 
         private <S, F, T> T mapReduce(ToLongBiFunction<StoreGroup, S> select, S scope, F f, Fold<F, ?, List<Future<T>>> fold, BiFunction<T, T, T> reduce)
         {
-            List<Future<T>> futures = groups.foldl(select, scope, fold, f, null, ArrayList::new);
+            List<Future<T>> futures = foldl(select, scope, fold, f, null, ArrayList::new);
             T result = null;
             for (Future<T> future : futures)
             {
@@ -391,9 +420,20 @@ public abstract class CommandStores
 
     public static class Debug extends SingleThread
     {
-        public Debug(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, Scheduler scheduler, ProgressLog.Factory progressLogFactory)
+        public Debug(int num, Node node, Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store, ProgressLog.Factory progressLogFactory)
         {
-            super(num, node, uniqueNow, agent, store, scheduler, progressLogFactory, CommandStore.Debug::new);
+            super(num, node, uniqueNow, agent, store, progressLogFactory, CommandStore.Debug::new);
+        }
+
+        public Debug(Supplier supplier, StoreGroup[] groups, Topology global, Topology local)
+        {
+            super(supplier, groups, global, local);
+        }
+
+        @Override
+        CommandStores update(StoreGroup[] groups, Topology global, Topology local)
+        {
+            return new Debug(supplier, groups, global, local);
         }
     }
 

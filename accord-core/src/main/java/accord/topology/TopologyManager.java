@@ -3,6 +3,7 @@ package accord.topology;
 import accord.api.ConfigurationService;
 import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
+import accord.local.CommandStores;
 import accord.local.Node;
 import accord.messages.Request;
 import accord.messages.TxnRequest;
@@ -36,18 +37,16 @@ public class TopologyManager implements ConfigurationService.Listener
     private static final Future<Void> SUCCESS = ImmediateFuture.success(null);
     class EpochState
     {
-        private final Topology global;
-        private final Topology local;
+        private final CommandStores stores;
         private final QuorumTracker syncTracker;
         private boolean syncComplete = false;
         private boolean prevSynced;
 
-        EpochState(Topology global, boolean prevSynced)
+        EpochState(CommandStores stores, boolean prevSynced)
         {
-            Preconditions.checkArgument(!global.isSubset());
-            this.global = global;
-            this.local = global.forNode(node);
-            this.syncTracker = new QuorumTracker(new Topologies.Singleton(global, false));
+            this.stores = stores;
+            Preconditions.checkArgument(!global().isSubset());
+            this.syncTracker = new QuorumTracker(new Topologies.Singleton(global(), false));
             this.prevSynced = prevSynced;
         }
 
@@ -61,9 +60,19 @@ public class TopologyManager implements ConfigurationService.Listener
             syncComplete = syncTracker.success(node);
         }
 
+        Topology global()
+        {
+            return stores.global();
+        }
+
+        Topology local()
+        {
+            return stores.local();
+        }
+
         long epoch()
         {
-            return global.epoch;
+            return global().epoch;
         }
 
         boolean syncComplete()
@@ -80,7 +89,7 @@ public class TopologyManager implements ConfigurationService.Listener
                 return false;
             if (syncComplete)
                 return true;
-            Boolean result = global.foldl(keys, (i, shard, acc) -> {
+            Boolean result = global().foldl(keys, (i, shard, acc) -> {
                 if (acc == Boolean.FALSE)
                     return acc;
                 return Boolean.valueOf(syncTracker.unsafeGet(i).hasReachedQuorum());
@@ -143,7 +152,7 @@ public class TopologyManager implements ConfigurationService.Listener
 
         public Topology current()
         {
-            return epochs.length > 0 ? epochs[0].global : Topology.EMPTY;
+            return epochs.length > 0 ? epochs[0].global() : Topology.EMPTY;
         }
 
         /**
@@ -194,16 +203,15 @@ public class TopologyManager implements ConfigurationService.Listener
         }
     }
 
-    private final Node.Id node;
     // TODO (now): this is unused!?
     private final LongConsumer epochReporter;
     private volatile Epochs epochs;
 
-    public TopologyManager(Node.Id node, LongConsumer epochReporter)
+    public TopologyManager(LongConsumer epochReporter, CommandStores emptyCommandStores)
     {
-        this.node = node;
+        Preconditions.checkState(emptyCommandStores.size() == 0);
         this.epochReporter = epochReporter;
-        this.epochs = new Epochs(new EpochState[0]);
+        this.epochs = new Epochs(new EpochState[] { new EpochState(emptyCommandStores, true) });
     }
 
     @Override
@@ -224,7 +232,7 @@ public class TopologyManager implements ConfigurationService.Listener
         System.arraycopy(current.epochs, 0, nextEpochs, 1, current.epochs.length);
 
         boolean prevSynced = current.epochs.length == 0 || current.epochs[0].syncComplete();
-        nextEpochs[0] = new EpochState(topology, prevSynced);
+        nextEpochs[0] = new EpochState(current.epochs[0].stores.withNewTopology(topology), prevSynced);
 
         List<AsyncPromise<Void>> futureEpochFutures = new ArrayList<>(current.futureEpochFutures);
         AsyncPromise<Void> toComplete = !futureEpochFutures.isEmpty() ? futureEpochFutures.remove(0) : null;
@@ -242,6 +250,11 @@ public class TopologyManager implements ConfigurationService.Listener
     public void onEpochSyncComplete(Node.Id node, long epoch)
     {
         epochs.syncComplete(node, epoch);
+    }
+
+    public CommandStores stores(long epoch)
+    {
+
     }
 
     public Topology current()
@@ -265,7 +278,7 @@ public class TopologyManager implements ConfigurationService.Listener
         Epochs snapshot = epochs;
 
         EpochState epochState = snapshot.get(snapshot.currentEpoch);
-        Topology currentTopology = epochState.global.forKeys(keys);
+        Topology currentTopology = epochState.global().forKeys(keys);
 
         if (minApplicableEpoch == Long.MAX_VALUE)
             minApplicableEpoch = currentTopology.epoch();
@@ -287,9 +300,9 @@ public class TopologyManager implements ConfigurationService.Listener
                     break;
 
                 if (epochState.epoch() < minApplicableEpoch)
-                    topologies.add(epochState.global.forKeys(keys, epochState::shardIsUnsynced));
+                    topologies.add(epochState.global().forKeys(keys, epochState::shardIsUnsynced));
                 else
-                    topologies.add(epochState.global.forKeys(keys));
+                    topologies.add(epochState.global().forKeys(keys));
             }
 
             assert topologies.get(topologies.size() - 1).epoch <= minApplicableEpoch;
@@ -305,12 +318,12 @@ public class TopologyManager implements ConfigurationService.Listener
     public Topologies currentForKeys(Keys keys)
     {
         Epochs snapshot = epochs;
-        return new Singleton(snapshot.get(snapshot.currentEpoch).global.forKeys(keys), false);
+        return new Singleton(snapshot.get(snapshot.currentEpoch).global().forKeys(keys), false);
     }
 
     public Topologies forEpoch(Keys keys, long epoch)
     {
-        return new Topologies.Singleton(epochs.get(epoch).global.forKeys(keys), true);
+        return new Topologies.Singleton(epochs.get(epoch).global().forKeys(keys), true);
     }
 
     public Shard forEpochIfKnown(Key key, long epoch)
@@ -318,7 +331,7 @@ public class TopologyManager implements ConfigurationService.Listener
         EpochState epochState = epochs.get(epoch);
         if (epochState == null)
             return null;
-        return epochState.global.forKey(key);
+        return epochState.global().forKey(key);
     }
 
     public boolean hasEpoch(long epoch)
@@ -338,7 +351,7 @@ public class TopologyManager implements ConfigurationService.Listener
 
     public Topology localForEpoch(long epoch)
     {
-        return epochs.get(epoch).local;
+        return epochs.get(epoch).local();
     }
 
     public Topologies forEpoch(Txn txn, long epoch)
