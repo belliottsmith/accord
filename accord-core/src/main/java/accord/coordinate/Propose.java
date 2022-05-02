@@ -45,7 +45,7 @@ class Propose extends AsyncPromise<Agreed>
         this.proposed = executeAt;
         this.acceptOks = new ArrayList<>();
         this.acceptTracker = new QuorumTracker(topologies);
-        // TODO (now): acceptTracker should be a callback itself, with a reference to us for propagating failure
+        // TODO: acceptTracker should be a callback itself, with a reference to us for propagating failure
         node.send(acceptTracker.nodes(), to -> new Accept(to, topologies, ballot, txnId, txn, homeKey, executeAt, deps), new Callback<AcceptReply>()
         {
             @Override
@@ -85,11 +85,11 @@ class Propose extends AsyncPromise<Agreed>
         Dependencies deps = new Dependencies();
         for (AcceptOk acceptOk : acceptOks)
             deps.addAll(acceptOk.deps);
-        agreed(proposed, deps, acceptTracker.topologies());
+        agreed(proposed, deps);
     }
 
-    protected void agreed(Timestamp executeAt, Dependencies deps, Topologies topologies)
+    protected void agreed(Timestamp executeAt, Dependencies deps)
     {
-        setSuccess(new Agreed(txnId, txn, homeKey, executeAt, deps, topologies, null, null));
+        setSuccess(new Agreed(txnId, txn, homeKey, executeAt, deps, null, null));
     }
 }

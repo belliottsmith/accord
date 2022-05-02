@@ -34,11 +34,12 @@ public class PreAccept extends TxnRequest
 
     public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey)
     {
-        this(Scope.forTopologies(to, topologies, txn, txnId.epoch), txnId, txn, homeKey);
+        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey);
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)
     {
+        // TODO: verify we handle all of the scope() keys
         node.reply(from, replyContext, node.mapReduceLocal(scope(), instance -> {
             // note: this diverges from the paper, in that instead of waiting for JoinShard,
             //       we PreAccept to both old and new topologies and require quorums in both.

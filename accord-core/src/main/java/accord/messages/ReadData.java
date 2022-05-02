@@ -127,7 +127,7 @@ public class ReadData extends TxnRequest
 
     public ReadData(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt)
     {
-        this(Scope.forTopologies(to, topologies, txn, executeAt.epoch), txnId, txn, homeKey, executeAt);
+        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt);
     }
 
     public void process(Node node, Node.Id from, ReplyContext replyContext)

@@ -238,7 +238,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         {
             Command command = commandStore.command(txnId);
             // TODO (now): this should be limited to the replicas of this shard?
-            Set<Id> nodes = new HashSet<>(node.topology().forTxn(command.txn(), command.executeAt().epoch).nodes());
+            Set<Id> nodes = new HashSet<>(node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch).nodes());
             nodes.remove(commandStore.node().id());
 
             stateMap.computeIfAbsent(txnId, State::new)
@@ -299,7 +299,8 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                     // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
                     Timestamp maxExecuteAtWithTxnAsDependency = state.maxExecuteAtWithTxnAsDependency;
                     Key key = state.command.someKey();
-                    Shard someShard = node.topology().forEpochIfKnown(key, txnId.epoch);
+                    long epoch = state.command.is(Status.Committed) ? state.command.executeAt().epoch : txnId.epoch;
+                    Shard someShard = node.topology().forEpochIfKnown(key, epoch);
                     if (someShard == null)
                     {
                         node.configService().fetchTopologyForEpoch(txnId.epoch);
@@ -307,7 +308,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                         continue;
                     }
                     CheckOnUncommitted check = checkOnUncommitted(node, txnId, state.command.txn(),
-                                                                  key, someShard,
+                                                                  key, someShard, epoch,
                                                                   state.maxExecuteAtWithTxnAsDependency);
                     state.inProgress = check;
                     check.whenComplete((success, fail) -> {
@@ -335,7 +336,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                 case ReadyToExecute:
                 {
                     Key homeKey = state.command.homeKey();
-                    long homeEpoch = (state.externalStatus == Uncommitted ? txnId : state.command.executeAt()).epoch;
+                    long homeEpoch = (state.externalStatus.compareTo(Uncommitted) <= 0 ? txnId : state.command.executeAt()).epoch;
                     Shard homeShard = node.topology().forEpochIfKnown(homeKey, homeEpoch);
                     if (homeShard == null)
                     {
@@ -344,7 +345,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                         continue;
                     }
                     CompletionStage<CheckStatusOk> recover = maybeRecover(node, txnId, state.command.txn(),
-                                                                          homeKey, homeShard,
+                                                                          homeKey, homeShard, homeEpoch,
                                                                           state.maxStatus, state.maxPromised, state.maxPromiseHasBeenAccepted);
                     state.inProgress = recover;
                     recover.whenComplete((success, fail) -> {
@@ -403,7 +404,8 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         {
             CoordinateApplyAndCheck coordinate = new CoordinateApplyAndCheck(state);
             Command command = state.command;
-            Topologies topologies = node.topology().forTxn(command.txn(), command.executeAt().epoch);
+            // TODO (now): whether we need to send to future shards depends on sync logic
+            Topologies topologies = node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch, Long.MAX_VALUE);
             state.waitingOn.retainAll(topologies.nodes()); // we might have had some nodes from older shards that are now redundant
             node.send(state.waitingOn, id -> new ApplyAndCheck(id, topologies,
                                                          command.txnId(), command.txn(), command.homeKey(),

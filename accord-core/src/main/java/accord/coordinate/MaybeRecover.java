@@ -3,8 +3,6 @@ package accord.coordinate;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
 
-import com.google.common.base.Preconditions;
-
 import accord.api.Key;
 import accord.local.Node;
 import accord.local.Status;
@@ -28,9 +26,9 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
     final Ballot knownPromised;
     final boolean knownPromisedHasBeenAccepted;
 
-    MaybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
+    MaybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch, Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
     {
-        super(node, txnId, txn, homeKey, homeShard, includeInfo);
+        super(node, txnId, txn, homeKey, homeShard, homeEpoch, includeInfo);
         this.knownStatus = knownStatus;
         this.knownPromised = knownPromised;
         this.knownPromisedHasBeenAccepted = knownPromiseHasBeenAccepted;
@@ -58,16 +56,16 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
     }
 
     // TODO (now): invoke from {node} so we may have mutual exclusion with other attempts to recover or coordinate
-    public static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard,
+    public static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
                                                               Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted)
     {
-        return maybeRecover(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, (byte)0);
+        return maybeRecover(node, txnId, txn, homeKey, homeShard, homeEpoch, knownStatus, knownPromised, knownPromiseHasBeenAccepted, (byte)0);
     }
 
-    private static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard,
+    private static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
                                                                Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
     {
-        MaybeRecover maybeRecover = new MaybeRecover(node, txnId, txn, homeKey, homeShard, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
+        MaybeRecover maybeRecover = new MaybeRecover(node, txnId, txn, homeKey, homeShard, homeEpoch, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
         maybeRecover.start();
         return maybeRecover;
     }
@@ -104,12 +102,12 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
                 {
                     CheckStatusOkFull full = (CheckStatusOkFull) max;
                     // TODO (now): consider topology choice here
-                    Persist.persist(node, node.topology().forKeys(txn.keys), txnId, key, txn, full.executeAt, full.deps, full.writes, full.result)
+                    Persist.persist(node, node.topology().syncForKeys(txn.keys, full.executeAt.epoch), txnId, key, txn, full.executeAt, full.deps, full.writes, full.result)
                            .addCallback(this);
                 }
                 else
                 {
-                    maybeRecover(node, txnId, txn, key, tracker.shard, max.status, max.promised, max.accepted.equals(max.promised), IncludeInfo.all())
+                    maybeRecover(node, txnId, txn, key, tracker.shard, epoch, max.status, max.promised, max.accepted.equals(max.promised), IncludeInfo.all())
                     .whenComplete((success, fail) -> {
                         if (fail != null) completeExceptionally(fail);
                         else

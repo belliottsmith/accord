@@ -1,7 +1,6 @@
 package accord.topology;
 
 import accord.local.Node;
-import accord.txn.Keys;
 import accord.utils.IndexedConsumer;
 import com.google.common.base.Preconditions;
 
@@ -13,6 +12,8 @@ public interface Topologies
     Topology current();
 
     int findEarliestSinceEpoch(long epoch);
+
+    long oldestEpoch();
 
     default long currentEpoch()
     {
@@ -93,12 +94,12 @@ public interface Topologies
         return sb.toString();
     }
 
-    class Singleton implements Topologies
+    class Single implements Topologies
     {
         private final Topology topology;
         private final boolean fastPathPermitted;
 
-        public Singleton(Topology topology, boolean fastPathPermitted)
+        public Single(Topology topology, boolean fastPathPermitted)
         {
             this.topology = topology;
             this.fastPathPermitted = fastPathPermitted;
@@ -108,6 +109,12 @@ public interface Topologies
         public Topology current()
         {
             return topology;
+        }
+
+        @Override
+        public long oldestEpoch()
+        {
+            return currentEpoch();
         }
 
         @Override
@@ -198,6 +205,12 @@ public interface Topologies
         }
 
         @Override
+        public long oldestEpoch()
+        {
+            return get(size() - 1).epoch;
+        }
+
+        @Override
         public int findEarliestSinceEpoch(long epoch)
         {
             long current = current().epoch;
@@ -256,7 +269,7 @@ public interface Topologies
             if (epoch <= topologies.get(0).epoch())
                 return this;
             if (epoch == current)
-                return new Singleton(current(), fastPathPermitted());
+                return new Single(current(), fastPathPermitted());
 
             int numEpochs = (int) (current - epoch + 1);
             Topology[] result = new Topology[numEpochs];

@@ -31,21 +31,30 @@ public abstract class TxnRequest implements Request
      */
     public static class Scope
     {
-        private final long evaluationEpoch;
-        private final long minRequiredEpoch;
+        // the first epoch we should process
+        private final long minEpoch;
+
+        // the last epoch on which this command must be logically processed,
+        // i.e. for Accept and Commit this is executeAt.epoch
+        //      for all other commands this is the same as minEpoch
+        private final long maxEpoch;
+
+        // the epoch we must wait for to be able to safely process this operation
+        private final long waitForEpoch;
         private final Keys keys;
 
-        public Scope(long evaluationEpoch, long minRequiredEpoch, Keys keys)
+        public Scope(long minEpoch, long maxEpoch, long waitForEpoch, Keys keys)
         {
-            this.evaluationEpoch = evaluationEpoch;
+            this.minEpoch = minEpoch;
+            this.maxEpoch = maxEpoch;
             Preconditions.checkArgument(!keys.isEmpty());
-            this.minRequiredEpoch = minRequiredEpoch;
+            this.waitForEpoch = waitForEpoch;
             this.keys = keys;
         }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Keys keys, long evaluationEpoch)
+        public static Scope forTopologies(Node.Id node, Topologies topologies, Keys keys)
         {
-            long minEpoch = 0;
+            long waitForEpoch = 0;
             Keys scopeKeys = Keys.EMPTY;
             Keys lastKeys = null;
             for (int i=topologies.size() - 1; i>=0; i--)
@@ -58,23 +67,33 @@ public abstract class TxnRequest implements Request
                 Keys epochKeys = keys.intersect(topologyRanges);
                 if (lastKeys == null || !lastKeys.equals(epochKeys))
                 {
-                    minEpoch = topology.epoch();
+                    waitForEpoch = topology.epoch();
                     scopeKeys = scopeKeys.union(epochKeys);
                 }
                 lastKeys = epochKeys;
             }
 
-            return new Scope(evaluationEpoch, minEpoch, scopeKeys);
+            return new Scope(topologies.oldestEpoch(), topologies.currentEpoch(), waitForEpoch, scopeKeys);
         }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Txn txn, long evaluationEpoch)
+        public static Scope forTopologies(Node.Id node, Topologies topologies, Txn txn)
         {
-            return forTopologies(node, topologies, txn.keys(), evaluationEpoch);
+            return forTopologies(node, topologies, txn.keys());
         }
 
-        public long minRequiredEpoch()
+        public long minEpoch()
         {
-            return minRequiredEpoch;
+            return minEpoch;
+        }
+
+        public long maxEpoch()
+        {
+            return maxEpoch;
+        }
+
+        public long waitForEpoch()
+        {
+            return waitForEpoch;
         }
 
         public Keys keys()
@@ -88,22 +107,27 @@ public abstract class TxnRequest implements Request
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             Scope scope = (Scope) o;
-            return minRequiredEpoch == scope.minRequiredEpoch && keys.equals(scope.keys);
+            return waitForEpoch == scope.waitForEpoch
+                   && minEpoch == scope.minEpoch
+                   && maxEpoch == scope.maxEpoch
+                   && keys.equals(scope.keys);
         }
 
         @Override
         public int hashCode()
         {
-            return Objects.hash(minRequiredEpoch, keys);
+            return Objects.hash(minEpoch, maxEpoch, waitForEpoch, keys);
         }
 
         @Override
         public String toString()
         {
             return "Scope{" +
-                    "maxEpoch=" + minRequiredEpoch +
-                    ", keys=" + keys +
-                    '}';
+                   "minEpoch=" + minEpoch +
+                   ", maxEpoch=" + maxEpoch +
+                   ", waitForEpoch=" + waitForEpoch +
+                   ", keys=" + keys +
+                   '}';
         }
     }
 }

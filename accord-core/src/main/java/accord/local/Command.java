@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import accord.api.Key;
 import accord.api.Result;
 import accord.local.Node.Id;
+import accord.topology.KeyRanges;
 import accord.txn.Ballot;
 import accord.txn.Dependencies;
 import accord.txn.Timestamp;
@@ -117,21 +118,21 @@ public class Command implements Listener, Consumer<Listener>
     // requires that command != null
     // relies on mutual exclusion for each key
     // note: we do not set status = newStatus, we only use it to decide how we register with the retryLog
-    private boolean witness(Txn txn, Key homeKey, Status newStatus)
+    private boolean witness(Txn txn, Key homeKey, boolean isHomeShard, Status newStatus)
     {
-        if (newStatus.compareTo(Accepted) >= 0 && !hasBeen(Accepted) && !isHomeShard(homeKey))
+        if (newStatus.compareTo(Accepted) >= 0 && !hasBeen(Accepted) && !isHomeShard)
             commandStore.progressLog().nonHomePostPreaccept(txnId);
 
         if (promised.compareTo(Ballot.ZERO) > 0)
             return false;
 
-        if (newStatus.compareTo(Committed) < 0 && !hasBeen(Committed) && isHomeShard(homeKey))
+        if (newStatus.compareTo(Committed) < 0 && !hasBeen(Committed) && isHomeShard)
             commandStore.progressLog().uncommitted(txnId);
 
         if (hasBeen(PreAccepted))
             return true;
 
-        if (!isHomeShard(homeKey) && newStatus.compareTo(PreAccepted) <= 0)
+        if (!isHomeShard && newStatus.compareTo(PreAccepted) <= 0)
             commandStore.progressLog().nonHomePreaccept(txnId);
 
         Timestamp max = commandStore.maxConflict(txn.keys);
@@ -155,7 +156,8 @@ public class Command implements Listener, Consumer<Listener>
 
     public boolean preaccept(Txn txn, Key homeKey)
     {
-        return witness(txn, homeKey, PreAccepted);
+        boolean isHomeShard = isHomeShard(txnId.epoch, homeKey);
+        return witness(txn, homeKey, isHomeShard, PreAccepted);
     }
 
     public boolean accept(Ballot ballot, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
@@ -166,7 +168,8 @@ public class Command implements Listener, Consumer<Listener>
         if (hasBeen(Committed))
             return false;
 
-        witness(txn, homeKey, Accepted);
+        boolean isHomeShard = isHomeShard(txnId.epoch, homeKey);
+        witness(txn, homeKey, isHomeShard, Accepted);
         this.deps = deps;
         this.executeAt = executeAt;
         promised = accepted = ballot;
@@ -187,14 +190,18 @@ public class Command implements Listener, Consumer<Listener>
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
         }
 
-        witness(txn, homeKey, Committed);
+        boolean isHomeShard = isHomeShard(txnId.epoch, homeKey);
+        witness(txn, homeKey, isHomeShard, Committed);
         this.status = Committed;
         this.deps = deps;
         this.executeAt = executeAt;
         this.waitingOnCommit = new TreeMap<>();
         this.waitingOnApply = new TreeMap<>();
 
-        for (TxnId id : savedDeps().on(commandStore))
+        // TODO (now): we need to consider the epoch of the dependencies to decide if they're a dependency on this
+        //             commandStore (and node), otherwise we may take a false dependency and wait for a transaction
+        //             that won't be applied to us
+        for (TxnId id : savedDeps().on(commandStore, executeAt))
         {
             Command command = commandStore.command(id);
             switch (command.status)
@@ -232,7 +239,7 @@ public class Command implements Listener, Consumer<Listener>
 
         // TODO: we might not be the homeShard for later phases if we are no longer replicas of the range at executeAt;
         //       this should be fine, but it might be helpful to provide this info to the progressLog here?
-        if (isHomeShard()) commandStore.progressLog().committed(txnId);
+        if (isHomeShard) commandStore.progressLog().committed(txnId);
         else commandStore.progressLog().nonHomeCommit(txnId);
 
         listeners.forEach(this);
@@ -266,7 +273,8 @@ public class Command implements Listener, Consumer<Listener>
         if (this.promised.compareTo(ballot) > 0)
             return false;
 
-        witness(txn, homeKey, PreAccepted);
+        boolean isHomeShard = isHomeShard(txnId.epoch, homeKey);
+        witness(txn, homeKey, isHomeShard, PreAccepted);
         this.promised = ballot;
         return true;
     }
@@ -338,7 +346,7 @@ public class Command implements Listener, Consumer<Listener>
             case Committed:
                 // TODO: maintain distinct ReadyToRead and ReadyToWrite states
                 status = ReadyToExecute;
-                if (isHomeShard())
+                if (isHomeShard(executeAt.epoch, homeKey)) // TODO (now): record distinct state if executeAt is not home shard?
                     commandStore.progressLog().readyToExecute(txnId);
                 listeners.forEach(this);
                 break;
@@ -448,15 +456,12 @@ public class Command implements Listener, Consumer<Listener>
         }
     }
 
-    private boolean isHomeShard()
+    private boolean isHomeShard(long epoch, Key homeKey)
     {
-        return isHomeShard(homeKey());
-    }
-
-    private boolean isHomeShard(Key homeKey)
-    {
-        // TODO (now): isHomeShard might depend on the phase
-        return commandStore.ranges(homeEpoch()).contains(homeKey);
+        KeyRanges ranges = commandStore.ranges(epoch);
+        if (ranges == null)
+            return false;
+        return ranges.contains(homeKey);
     }
 
     private Id coordinator()

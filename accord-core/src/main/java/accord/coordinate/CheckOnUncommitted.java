@@ -29,21 +29,21 @@ public class CheckOnUncommitted extends CheckShardStatus
     // it must take a later executeAt
     @Nullable final Timestamp maxExecuteAtWithTxnAsDependency;
 
-    CheckOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard,
+    CheckOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch,
                        @Nullable Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
     {
-        super(node, txnId, txn, someKey, someShard, includeInfo);
+        super(node, txnId, txn, someKey, someShard, shardEpoch, includeInfo);
         this.maxExecuteAtWithTxnAsDependency = maxExecuteAtWithTxnAsDependency;
     }
 
-    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, Timestamp maxExecuteAtWithTxnAsDependency)
+    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp maxExecuteAtWithTxnAsDependency)
     {
-        return checkOnUncommitted(node, txnId, txn, someKey, someShard, maxExecuteAtWithTxnAsDependency, (byte)0);
+        return checkOnUncommitted(node, txnId, txn, someKey, someShard, shardEpoch, maxExecuteAtWithTxnAsDependency, (byte)0);
     }
 
-    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
+    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
     {
-        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, someKey, someShard, maxExecuteAtWithTxnAsDependency, (byte) (includeInfo | HomeKey.and(Dependencies.and(ExecuteAt))));
+        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, someKey, someShard, shardEpoch, maxExecuteAtWithTxnAsDependency, (byte) (includeInfo | HomeKey.and(Dependencies.and(ExecuteAt))));
         checkOnUncommitted.start();
         return checkOnUncommitted;
     }
@@ -65,7 +65,7 @@ public class CheckOnUncommitted extends CheckShardStatus
         try
         {
             CheckStatusOkFull full = (CheckStatusOkFull) max;
-            node.forEachLocal(txn.keys, commandStore -> {
+            node.forEachLocal(txn.keys, txnId.epoch, commandStore -> {
                 Command command = commandStore.command(txnId);
                 switch (full.status)
                 {

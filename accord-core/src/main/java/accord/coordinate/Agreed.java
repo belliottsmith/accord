@@ -16,18 +16,16 @@ class Agreed
     public final Key homeKey;
     public final Timestamp executeAt;
     public final Dependencies deps;
-    public final Topologies topologies;
     public final Writes applied;
     public final Result result;
 
-    public Agreed(TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Topologies topologies, Writes applied, Result result)
+    public Agreed(TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes applied, Result result)
     {
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
         this.executeAt = executeAt;
         this.deps = deps;
-        this.topologies = topologies;
         this.applied = applied;
         this.result = result;
     }

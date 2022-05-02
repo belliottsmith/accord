@@ -38,7 +38,8 @@ public class Apply extends TxnRequest
 
     public Apply(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
     {
-        this(Scope.forTopologies(to, topologies, txn, executeAt.epoch), txnId, txn, homeKey, executeAt, deps, writes, result);
+        // TODO (now): should we apply at later epochs, or rely on sync for that?
+        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt, deps, writes, result);
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)

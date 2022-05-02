@@ -10,7 +10,6 @@ import accord.messages.Callback;
 import accord.local.Node;
 import accord.topology.Topologies;
 import accord.txn.*;
-import accord.messages.Apply;
 import accord.messages.ReadData.ReadReply;
 import accord.txn.Dependencies;
 import accord.local.Node.Id;
@@ -43,8 +42,8 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         this.deps = agreed.deps;
         this.executeAt = agreed.executeAt;
         // TODO (now): why do we removeEpochsBefore rather than do forTxn(agreed.txn, agreed.executeAt.epoch)?
-        Topologies coordinationTopologies = node.topology().forTxn(agreed.txn).removeEpochsBefore(agreed.executeAt.epoch);
-        Topologies readTopologies = node.topology().currentForKeys(agreed.txn.read.keys());
+        Topologies coordinationTopologies = node.topology().unsyncForTxn(agreed.txn, agreed.executeAt.epoch);
+        Topologies readTopologies = node.topology().unsyncForKeys(agreed.txn.read.keys(), agreed.executeAt.epoch);
         this.readTracker = new ReadTracker(readTopologies);
         this.topologies = coordinationTopologies;
 
@@ -57,7 +56,7 @@ class Execute extends AsyncPromise<Result> implements Callback<ReadReply>
         else
         {
             Set<Id> readSet = readTracker.computeMinimalReadSetAndMarkInflight();
-            for (Node.Id to : readTracker.nodes())
+            for (Node.Id to : coordinationTopologies.nodes())
             {
                 boolean read = readSet.contains(to);
                 Commit send = new Commit(to, topologies, txnId, txn, homeKey, executeAt, agreed.deps, read);

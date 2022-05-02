@@ -14,7 +14,6 @@ import accord.txn.Ballot;
 import accord.messages.Callback;
 import accord.local.Node;
 import accord.local.Node.Id;
-import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Dependencies;
 import accord.txn.Txn;
@@ -39,7 +38,7 @@ class Recover extends Propose implements Callback<RecoverReply>
 
         AwaitCommit(Node node, TxnId txnId, Txn txn)
         {
-            Topologies topologies = node.topology().forTxn(txn, txnId.epoch);
+            Topologies topologies = node.topology().unsyncForTxn(txn, txnId.epoch);
             this.tracker = new QuorumTracker(topologies);
             node.send(topologies.nodes(), to -> new WaitOnCommit(to, topologies, txnId, txn.keys()), this);
         }
@@ -165,17 +164,17 @@ class Recover extends Propose implements Callback<RecoverReply>
 
         if (acceptOrCommit != null)
         {
-            long minEpoch = txnId.epoch;
             switch (acceptOrCommit.status)
             {
                 case Accepted:
-                    startAccept(acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch));
+                    Topologies topologies = node.topology().forTxn(txn, txnId.epoch, acceptOrCommit.executeAt.epoch);
+                    startAccept(acceptOrCommit.executeAt, acceptOrCommit.deps, topologies);
                     return;
                 case Committed:
                 case ReadyToExecute:
                 case Executed:
                 case Applied:
-                    setSuccess(new Agreed(txnId, txn, homeKey, acceptOrCommit.executeAt, acceptOrCommit.deps, node.topology().forTxn(txn, minEpoch), acceptOrCommit.writes, acceptOrCommit.result));
+                    setSuccess(new Agreed(txnId, txn, homeKey, acceptOrCommit.executeAt, acceptOrCommit.deps, acceptOrCommit.writes, acceptOrCommit.result));
                     return;
             }
         }
@@ -214,7 +213,7 @@ class Recover extends Propose implements Callback<RecoverReply>
             executeAt = txnId;
         }
 
-        startAccept(executeAt, deps, node.topology().forTxn(txn, Timestamp.min(txnId, executeAt).epoch));
+        startAccept(executeAt, deps, node.topology().forTxn(txn, txnId, executeAt));
     }
 
     private void retry()

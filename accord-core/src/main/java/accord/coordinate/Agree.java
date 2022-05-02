@@ -139,7 +139,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
     {
         super(node, Ballot.ZERO, txnId, txn, homeKey);
         this.keys = txn.keys();
-        tracker = new PreacceptTracker(node.topology().forKeys(txn.keys(), txnId.epoch));
+        tracker = new PreacceptTracker(node.topology().syncForKeys(txn.keys(), txnId.epoch, txnId.epoch));
         // TODO: consider sending only to electorate of most recent topology (as only these PreAccept votes matter)
         // note that we must send to all replicas of old topology, as electorate may not be reachable
         node.send(tracker.nodes(), to -> new PreAccept(to, tracker.topologies(), txnId, txn, homeKey), this);
@@ -169,7 +169,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
     {
         if (!tracker.hasSupersedingEpoch())
             return;
-        Topologies newTopologies = node.topology().forKeys(txn.keys(), txnId.epoch);
+        Topologies newTopologies = node.topology().syncForKeys(txn.keys(), txnId.epoch, tracker.supersedingEpoch);
         if (newTopologies.currentEpoch() < tracker.supersedingEpoch)
             return;
         Set<Id> previousNodes = tracker.nodes();
@@ -202,13 +202,11 @@ class Agree extends Propose implements Callback<PreAcceptReply>
         boolean fastPath = ok.witnessedAt.compareTo(txnId) == 0;
         tracker.recordSuccess(from, fastPath);
 
-        if (!fastPath && ok.witnessedAt.epoch > txnId.epoch)
+        // TODO: we should only update epoch if we need to in order to reach quorum
+        if (!fastPath && ok.witnessedAt.epoch > txnId.epoch && tracker.recordSupersedingEpoch(ok.witnessedAt.epoch))
         {
-            if (tracker.recordSupersedingEpoch(ok.witnessedAt.epoch))
-            {
-                node.configService().fetchTopologyForEpoch(ok.witnessedAt.epoch);
-                node.topology().awaitEpoch(ok.witnessedAt.epoch).addListener(this::onEpochUpdate);
-            }
+            node.configService().fetchTopologyForEpoch(ok.witnessedAt.epoch);
+            node.topology().awaitEpoch(ok.witnessedAt.epoch).addListener(this::onEpochUpdate);
         }
 
         if (!tracker.hasSupersedingEpoch() && (tracker.hasMetFastPathCriteria() || tracker.shouldSlowPathAccept()))
@@ -226,7 +224,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
                 if (preAcceptOk.witnessedAt.equals(txnId))
                     deps.addAll(preAcceptOk.deps);
             }
-            agreed(txnId, deps, tracker.topologies());
+            agreed(txnId, deps);
         }
         else
         {

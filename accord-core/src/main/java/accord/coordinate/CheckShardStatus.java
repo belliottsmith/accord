@@ -59,13 +59,15 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
     final Key key; // not necessarily homeKey
     final Tracker tracker;
     final List<Id> candidates;
+    final long epoch;
     final byte includeInfo;
 
     CheckStatusOk max;
     Throwable failure;
 
-    CheckShardStatus(Node node, TxnId txnId, Txn txn, Key key, Shard shard, byte includeInfo)
+    CheckShardStatus(Node node, TxnId txnId, Txn txn, Key key, Shard shard, long epoch, byte includeInfo)
     {
+        this.epoch = epoch;
         Preconditions.checkNotNull(txn);
         Preconditions.checkState(txn.keys.contains(key));
         this.txnId = txnId;
@@ -134,7 +136,7 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
         Id next = candidates.get(candidates.size() - 1);
         candidates.remove(candidates.size() - 1);
         tracker.recordInflightRead(next);
-        node.send(next, new CheckStatus(txnId, key, includeInfo), this);
+        node.send(next, new CheckStatus(txnId, key, epoch, includeInfo), this);
     }
 
     private boolean hasMoreCandidates()

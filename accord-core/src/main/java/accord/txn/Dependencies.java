@@ -1,5 +1,6 @@
 package accord.txn;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -8,6 +9,8 @@ import java.util.TreeMap;
 
 import accord.local.Command;
 import accord.local.CommandStore;
+import accord.topology.KeyRanges;
+
 import com.google.common.annotations.VisibleForTesting;
 
 // TODO: do not send Txn
@@ -64,11 +67,15 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
         return deps.get(txnId);
     }
 
-    public Iterable<TxnId> on(CommandStore commandStore)
+    public Iterable<TxnId> on(CommandStore commandStore, Timestamp executeAt)
     {
+        KeyRanges ranges = commandStore.ranges(executeAt.epoch);
+        if (ranges == null)
+            return Collections.emptyList();
+
         return deps.entrySet()
                 .stream()
-                .filter(e -> commandStore.intersects(e.getValue().keys()))
+                .filter(e -> commandStore.intersects(e.getValue().keys(), ranges))
                 .map(Entry::getKey)::iterator;
     }
 

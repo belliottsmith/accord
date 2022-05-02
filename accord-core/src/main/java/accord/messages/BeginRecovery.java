@@ -46,7 +46,7 @@ public class BeginRecovery extends TxnRequest
 
     public BeginRecovery(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
     {
-        this(Scope.forTopologies(to, topologies, txn, txnId.epoch), txnId, txn, homeKey, ballot);
+        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, ballot);
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
@@ -173,7 +173,7 @@ public class BeginRecovery extends TxnRequest
             node.topology().awaitEpoch(ok.executeAt.epoch).addListener(() -> disseminateApply(node, ok));
             return;
         }
-        Topologies topologies = node.topology().forKeys(txn.keys, ok.executeAt.epoch);
+        Topologies topologies = node.topology().syncForKeys(txn.keys, ok.executeAt.epoch);
         node.send(topologies.nodes(), to -> new Apply(to, topologies, txnId, txn, homeKey, ok.executeAt, ok.deps, ok.writes, ok.result));
     }
     

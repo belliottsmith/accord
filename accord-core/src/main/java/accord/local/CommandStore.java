@@ -2,13 +2,11 @@ package accord.local;
 
 import accord.api.Agent;
 import accord.api.Key;
-import accord.local.CommandStores.StoreGroup;
+import accord.local.CommandStores.ShardedRanges;
 import accord.api.ProgressLog;
-import accord.api.Scheduler;
 import accord.topology.KeyRange;
 import accord.api.DataStore;
 import accord.topology.KeyRanges;
-import accord.topology.Topology;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.TxnId;
@@ -23,7 +21,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.function.LongFunction;
 
 import org.apache.cassandra.utils.concurrent.UncheckedInterruptedException;
 
@@ -38,22 +36,20 @@ public abstract class CommandStore
                             int shardIndex,
                             int numShards,
                             Node node,
-                            Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent,
                             DataStore store,
                             ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges);
+                            LongFunction<KeyRanges> rangesForEpoch);
     }
 
     private final int generation;
     private final int shardIndex;
     private final int numShards;
     private final Node node;
-    private final Function<Timestamp, Timestamp> uniqueNow;
     private final Agent agent;
     private final DataStore store;
     private final ProgressLog progressLog;
-    private final KeyRanges ranges;
+    private final LongFunction<KeyRanges> rangesForEpoch;
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
@@ -62,22 +58,20 @@ public abstract class CommandStore
                         int shardIndex,
                         int numShards,
                         Node node,
-                        Function<Timestamp, Timestamp> uniqueNow,
                         Agent agent,
                         DataStore store,
                         ProgressLog.Factory progressLogFactory,
-                        KeyRanges ranges)
+                        LongFunction<KeyRanges> rangesForEpoch)
     {
         Preconditions.checkArgument(shardIndex < numShards);
         this.generation = generation;
         this.shardIndex = shardIndex;
         this.numShards = numShards;
         this.node = node;
-        this.uniqueNow = uniqueNow;
         this.agent = agent;
         this.store = store;
         this.progressLog = progressLogFactory.create(this);
-        this.ranges = ranges;
+        this.rangesForEpoch = rangesForEpoch;
     }
 
     public Command command(TxnId txnId)
@@ -112,7 +106,7 @@ public abstract class CommandStore
 
     public Timestamp uniqueNow(Timestamp atLeast)
     {
-        return uniqueNow.apply(atLeast);
+        return node.uniqueNow(atLeast);
     }
 
     public Agent agent()
@@ -130,15 +124,15 @@ public abstract class CommandStore
         return node;
     }
 
+    public KeyRanges ranges(long epoch)
+    {
+        return rangesForEpoch.apply(epoch);
+    }
+
     public long latestEpoch()
     {
         // TODO: why not inject the epoch to each command store?
         return node.epoch();
-    }
-
-    public KeyRanges ranges(long epoch)
-    {
-        return ranges;
     }
 
     protected Timestamp maxConflict(Keys keys)
@@ -190,17 +184,12 @@ public abstract class CommandStore
         }
     }
 
-    public int index()
-    {
-        return shardIndex;
-    }
-
     public boolean hashIntersects(Key key)
     {
-        return StoreGroup.keyIndex(key, numShards) == shardIndex;
+        return ShardedRanges.keyIndex(key, numShards) == shardIndex;
     }
 
-    public boolean intersects(Keys keys)
+    public boolean intersects(Keys keys, KeyRanges ranges)
     {
         return keys.any(ranges, this::hashIntersects);
     }
@@ -261,11 +250,11 @@ public abstract class CommandStore
     public static class Synchronized extends CommandStore
     {
         public Synchronized(int generation, int index, int numShards, Node node,
-                            Function<Timestamp, Timestamp> uniqueNow, Agent agent, DataStore store,
+                            Agent agent, DataStore store,
                             ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges)
+                            LongFunction<KeyRanges> rangesForEpoch)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
+            super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
         }
 
         @Override
@@ -325,11 +314,10 @@ public abstract class CommandStore
         }
 
         public SingleThread(int generation, int index, int numShards, Node node,
-                            Function<Timestamp, Timestamp> uniqueNow,
                             Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
-                            KeyRanges ranges)
+                            LongFunction<KeyRanges> rangesForEpoch)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
+            super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r);
                 thread.setName(CommandStore.class.getSimpleName() + '[' + node.id() + ':' + index + ']');
@@ -365,11 +353,10 @@ public abstract class CommandStore
         private final AtomicReference<Thread> expectedThread = new AtomicReference<>();
 
         public Debug(int generation, int index, int numShards, Node node,
-                     Function<Timestamp, Timestamp> uniqueNow,
                      Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
-                     KeyRanges ranges)
+                     LongFunction<KeyRanges> rangesForEpoch)
         {
-            super(generation, index, numShards, node, uniqueNow, agent, store, progressLogFactory, ranges);
+            super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
         }
 
         private void assertThread()

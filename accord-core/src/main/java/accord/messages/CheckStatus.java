@@ -47,19 +47,21 @@ public class CheckStatus implements Request
 
     final TxnId txnId;
     final Key key; // the key's commandStore to consult - not necessarily the homeKey
+    final long epoch;
     final byte includeInfo;
 
-    public CheckStatus(TxnId txnId, Key key, byte includeInfo)
+    public CheckStatus(TxnId txnId, Key key, long epoch, byte includeInfo)
     {
         this.txnId = txnId;
         this.key = key;
+        this.epoch = epoch;
         this.includeInfo = includeInfo;
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
 
-        Reply reply = node.ifLocal(key, instance -> {
+        Reply reply = node.ifLocal(key, epoch, instance -> {
             Command command = instance.command(txnId);
             if (includeInfo != 0)
             {

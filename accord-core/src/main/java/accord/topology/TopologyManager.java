@@ -3,12 +3,12 @@ package accord.topology;
 import accord.api.ConfigurationService;
 import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
-import accord.local.CommandStores;
 import accord.local.Node;
 import accord.messages.Request;
 import accord.messages.TxnRequest;
-import accord.topology.Topologies.Singleton;
+import accord.topology.Topologies.Single;
 import accord.txn.Keys;
+import accord.txn.Timestamp;
 import accord.txn.Txn;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -35,18 +35,20 @@ import java.util.function.LongConsumer;
 public class TopologyManager implements ConfigurationService.Listener
 {
     private static final Future<Void> SUCCESS = ImmediateFuture.success(null);
-    class EpochState
+    static class EpochState
     {
-        private final CommandStores stores;
+        private final Topology global;
+        private final Topology local;
         private final QuorumTracker syncTracker;
         private boolean syncComplete = false;
         private boolean prevSynced;
 
-        EpochState(CommandStores stores, boolean prevSynced)
+        EpochState(Node.Id node, Topology global, boolean prevSynced)
         {
-            this.stores = stores;
+            this.global = global;
+            this.local = global.forNode(node);
             Preconditions.checkArgument(!global().isSubset());
-            this.syncTracker = new QuorumTracker(new Topologies.Singleton(global(), false));
+            this.syncTracker = new QuorumTracker(new Single(global(), false));
             this.prevSynced = prevSynced;
         }
 
@@ -62,12 +64,12 @@ public class TopologyManager implements ConfigurationService.Listener
 
         Topology global()
         {
-            return stores.global();
+            return global;
         }
 
         Topology local()
         {
-            return stores.local();
+            return local;
         }
 
         long epoch()
@@ -192,26 +194,31 @@ public class TopologyManager implements ConfigurationService.Listener
 
         long maxUnknownEpoch(TxnRequest.Scope scope)
         {
-            if (currentEpoch < scope.minRequiredEpoch())
-                return scope.minRequiredEpoch();
+            if (currentEpoch < scope.waitForEpoch())
+                return scope.waitForEpoch();
             return 0;
         }
 
-        boolean requiresHistoricalTopologiesFor(Keys keys)
+        boolean requiresHistoricalTopologiesFor(Keys keys, long epoch)
         {
-            return epochs.length > 1 && !epochs[1].syncCompleteFor(keys);
+            Preconditions.checkState(epoch <= currentEpoch);
+            if (1 + currentEpoch - epoch >= epochs.length)
+                return false;
+            int i = (int)(1 + currentEpoch - epoch);
+            return epochs[i].syncCompleteFor(keys);
         }
     }
 
+    private final Node.Id node;
     // TODO (now): this is unused!?
     private final LongConsumer epochReporter;
     private volatile Epochs epochs;
 
-    public TopologyManager(LongConsumer epochReporter, CommandStores emptyCommandStores)
+    public TopologyManager(Node.Id node, LongConsumer epochReporter)
     {
-        Preconditions.checkState(emptyCommandStores.size() == 0);
+        this.node = node;
         this.epochReporter = epochReporter;
-        this.epochs = new Epochs(new EpochState[] { new EpochState(emptyCommandStores, true) });
+        this.epochs = new Epochs(new EpochState[0]);
     }
 
     @Override
@@ -232,7 +239,7 @@ public class TopologyManager implements ConfigurationService.Listener
         System.arraycopy(current.epochs, 0, nextEpochs, 1, current.epochs.length);
 
         boolean prevSynced = current.epochs.length == 0 || current.epochs[0].syncComplete();
-        nextEpochs[0] = new EpochState(current.epochs[0].stores.withNewTopology(topology), prevSynced);
+        nextEpochs[0] = new EpochState(node, topology, prevSynced);
 
         List<AsyncPromise<Void>> futureEpochFutures = new ArrayList<>(current.futureEpochFutures);
         AsyncPromise<Void> toComplete = !futureEpochFutures.isEmpty() ? futureEpochFutures.remove(0) : null;
@@ -252,11 +259,6 @@ public class TopologyManager implements ConfigurationService.Listener
         epochs.syncComplete(node, epoch);
     }
 
-    public CommandStores stores(long epoch)
-    {
-
-    }
-
     public Topology current()
     {
         return epochs.current();
@@ -273,57 +275,67 @@ public class TopologyManager implements ConfigurationService.Listener
         return epochs.get(epoch);
     }
 
-    public Topologies forKeys(Keys keys, long minApplicableEpoch)
+    public Topologies syncForKeys(Keys keys, long minEpoch, long maxEpoch)
     {
         Epochs snapshot = epochs;
 
-        EpochState epochState = snapshot.get(snapshot.currentEpoch);
-        Topology currentTopology = epochState.global().forKeys(keys);
+        if (maxEpoch == Long.MAX_VALUE) maxEpoch = snapshot.currentEpoch;
+        else Preconditions.checkState(snapshot.currentEpoch >= maxEpoch);
 
-        if (minApplicableEpoch == Long.MAX_VALUE)
-            minApplicableEpoch = currentTopology.epoch();
-        else
-            Preconditions.checkArgument(minApplicableEpoch <= currentTopology.epoch() && minApplicableEpoch >= 0);
+        EpochState epochState = snapshot.get(maxEpoch);
+        if (minEpoch == maxEpoch && !snapshot.requiresHistoricalTopologiesFor(keys, maxEpoch))
+            return new Single(epochState.global.forKeys(keys), true);
 
-        if (currentTopology.epoch() == minApplicableEpoch && !epochs.requiresHistoricalTopologiesFor(keys))
+        int i = (int)(snapshot.currentEpoch - maxEpoch);
+        int limit = (int)(Math.min(1 + snapshot.currentEpoch - minEpoch, snapshot.epochs.length));
+        int count = limit - i;
+        while (count + 1 < snapshot.epochs.length && !snapshot.epochs[count + 1].syncCompleteFor(keys))
         {
-            return new Topologies.Singleton(currentTopology, true);
+            ++count;
+            ++limit;
         }
-        else
-        {
-            Topologies.Multi topologies = new Topologies.Multi(2);
-            topologies.add(currentTopology);
-            for (int i=1; i<snapshot.epochs.length; i++)
-            {
-                epochState = snapshot.epochs[i];
-                if (i > 1 && epochState.syncCompleteFor(keys) && epochState.epoch() < minApplicableEpoch)
-                    break;
 
-                if (epochState.epoch() < minApplicableEpoch)
-                    topologies.add(epochState.global().forKeys(keys, epochState::shardIsUnsynced));
-                else
-                    topologies.add(epochState.global().forKeys(keys));
-            }
+        Topologies.Multi topologies = new Topologies.Multi(count);
+        while (i < limit)
+            topologies.add(snapshot.epochs[i++].global.forKeys(keys));
 
-            assert topologies.get(topologies.size() - 1).epoch <= minApplicableEpoch;
-            return topologies;
-        }
+        return topologies;
     }
 
-    public Topologies forKeys(Keys keys)
+    public Topologies syncForKeys(Keys keys, long epoch)
     {
-        return forKeys(keys, Long.MAX_VALUE);
+        return syncForKeys(keys, epoch, epoch);
+    }
+
+    public Topologies unsyncForKeys(Keys keys, long minEpoch, long maxEpoch)
+    {
+        Epochs snapshot = epochs;
+
+        if (minEpoch == maxEpoch)
+            return new Single(snapshot.get(minEpoch).global().forKeys(keys), true);
+
+        int count = (int)(1 + maxEpoch - minEpoch);
+        Topologies.Multi topologies = new Topologies.Multi(count);
+        for (int i = 0 ; i < count ; ++i)
+            topologies.add(snapshot.get(minEpoch + count).global.forKeys(keys));
+
+        return topologies;
+    }
+
+    public Topologies unsyncForKeys(Keys keys, long epoch)
+    {
+        return unsyncForKeys(keys, epoch, epoch);
     }
 
     public Topologies currentForKeys(Keys keys)
     {
         Epochs snapshot = epochs;
-        return new Singleton(snapshot.get(snapshot.currentEpoch).global().forKeys(keys), false);
+        return new Single(snapshot.get(snapshot.currentEpoch).global().forKeys(keys), false);
     }
 
     public Topologies forEpoch(Keys keys, long epoch)
     {
-        return new Topologies.Singleton(epochs.get(epoch).global().forKeys(keys), true);
+        return new Single(epochs.get(epoch).global().forKeys(keys), true);
     }
 
     public Shard forEpochIfKnown(Key key, long epoch)
@@ -339,14 +351,29 @@ public class TopologyManager implements ConfigurationService.Listener
         return epochs.get(epoch) != null;
     }
 
-    public Topologies forTxn(Txn txn, long minApplicableEpoch)
+    public Topologies forTxn(Txn txn, long epoch)
     {
-        return forKeys(txn.keys(), minApplicableEpoch);
+        return syncForKeys(txn.keys(), epoch, epoch);
     }
 
-    public Topologies forTxn(Txn txn)
+    public Topologies forTxn(Txn txn, long minEpoch, long maxEpoch)
     {
-        return forKeys(txn.keys(), Long.MAX_VALUE);
+        return syncForKeys(txn.keys(), minEpoch, maxEpoch);
+    }
+
+    public Topologies forTxn(Txn txn, Timestamp min, Timestamp max)
+    {
+        return syncForKeys(txn.keys(), min.epoch, max.epoch);
+    }
+
+    public Topologies unsyncForTxn(Txn txn, long epoch)
+    {
+        return syncForKeys(txn.keys(), epoch, epoch);
+    }
+
+    public Topologies unsyncForTxn(Txn txn, long minEpoch, long maxEpoch)
+    {
+        return syncForKeys(txn.keys(), minEpoch, maxEpoch);
     }
 
     public Topology localForEpoch(long epoch)

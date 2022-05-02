@@ -78,14 +78,14 @@ public class WaitOnCommit extends TxnRequest
 
         synchronized void setup(Keys keys)
         {
-            List<CommandStore> instances = node.collectLocal(keys, ArrayList::new);
+            List<CommandStore> instances = node.collectLocal(keys, txnId.epoch, ArrayList::new);
             waitingOn.set(instances.size());
             instances.forEach(instance -> instance.processBlocking(this::setup));
         }
     }
 
     public final TxnId txnId;
-    public final Keys keys;
+    public final Keys keys; // TODO (now): redundant with TxnRequest.Scope
 
     public WaitOnCommit(Scope scope, TxnId txnId, Keys keys)
     {
@@ -96,7 +96,7 @@ public class WaitOnCommit extends TxnRequest
 
     public WaitOnCommit(Id to, Topologies topologies, TxnId txnId, Keys keys)
     {
-        this(Scope.forTopologies(to, topologies, keys, txnId.epoch), txnId, keys);
+        this(Scope.forTopologies(to, topologies, keys), txnId, keys);
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)

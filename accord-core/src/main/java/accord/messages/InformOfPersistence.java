@@ -12,16 +12,18 @@ public class InformOfPersistence implements Request
 {
     final TxnId txnId;
     final Key homeKey;
+    final long epoch;
 
-    public InformOfPersistence(TxnId txnId, Key homeKey)
+    public InformOfPersistence(TxnId txnId, Key homeKey, long epoch)
     {
         this.txnId = txnId;
         this.homeKey = homeKey;
+        this.epoch = epoch;
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        Reply reply = node.ifLocal(homeKey, instance -> {
+        Reply reply = node.ifLocal(homeKey, epoch, instance -> {
             instance.command(txnId).setGloballyPersistent();
             instance.progressLog().executedOnAllShards(txnId);
             return ok();

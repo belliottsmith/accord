@@ -4,7 +4,7 @@ import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
 import accord.local.*;
 import accord.messages.*;
-import accord.topology.Topologies;
+import accord.topology.Topologies.Single;
 import accord.topology.Topology;
 import accord.txn.*;
 import com.google.common.base.Preconditions;
@@ -88,7 +88,7 @@ public class EpochSync implements Runnable
         public CommandSync(Node node, SyncMessage message, Topology topology)
         {
             Keys keys = message.txn.keys();
-            this.tracker = new QuorumTracker(new Topologies.Singleton(topology.forKeys(keys), false));
+            this.tracker = new QuorumTracker(new Single(topology.forKeys(keys), false));
             node.send(tracker.nodes(), message, this);
         }
 

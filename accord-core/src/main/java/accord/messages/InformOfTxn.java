@@ -24,7 +24,7 @@ public class InformOfTxn implements Request
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        Reply reply = node.ifLocal(homeKey, instance -> {
+        Reply reply = node.ifLocal(homeKey, txnId.epoch, instance -> {
             instance.command(txnId).preaccept(txn, homeKey);
             return ok();
         });

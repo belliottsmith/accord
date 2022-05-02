@@ -98,6 +98,7 @@ public class Node implements ConfigurationService.Listener
     private final MessageSink messageSink;
     private final ConfigurationService configService;
     private final TopologyManager topology;
+    private final CommandStores commandStores;
 
     private final LongSupplier nowSupplier;
     private final AtomicReference<Timestamp> now;
@@ -116,14 +117,14 @@ public class Node implements ConfigurationService.Listener
         this.id = id;
         this.messageSink = messageSink;
         this.configService = configService;
-        CommandStores emptyCommandStores = factory.create(numCommandShards(), this, this::uniqueNow, agent, dataSupplier.get(), progressLogFactory.apply(this));
-        this.topology = new TopologyManager(configService::reportEpoch, emptyCommandStores);
-        Topology topology = configService.currentTopology();
+        this.topology = new TopologyManager(id, configService::reportEpoch);
         this.nowSupplier = nowSupplier;
+        Topology topology = configService.currentTopology();
         this.now = new AtomicReference<>(new Timestamp(topology.epoch(), nowSupplier.getAsLong(), 0, id));
         this.agent = agent;
         this.random = random;
         this.scheduler = scheduler;
+        this.commandStores = factory.create(numCommandShards(), this, agent, dataSupplier.get(), progressLogFactory.apply(this));
 
         configService.registerListener(this);
         onTopologyUpdate(topology, false);
@@ -148,6 +149,7 @@ public class Node implements ConfigurationService.Listener
     {
         if (topology.epoch() <= this.topology.epoch())
             return;
+        commandStores.updateTopology(topology);
         this.topology.onTopologyUpdate(topology);
         if (acknowledge)
             configService.acknowledgeEpoch(topology.epoch());
@@ -172,7 +174,7 @@ public class Node implements ConfigurationService.Listener
 
     public void shutdown()
     {
-        topology.current().stores().shutdown();
+        commandStores.shutdown();
     }
 
     public Timestamp uniqueNow()
@@ -209,14 +211,14 @@ public class Node implements ConfigurationService.Listener
         commandStores.forEach(forEach);
     }
 
-    public void forEachLocal(Keys keys, Consumer<CommandStore> forEach)
+    public void forEachLocal(Keys keys, long epoch, Consumer<CommandStore> forEach)
     {
-        commandStores.forEach(keys, forEach);
+        commandStores.forEach(keys, epoch, forEach);
     }
 
-    public void forEachLocal(Txn txn, Consumer<CommandStore> forEach)
+    public void forEachLocal(Txn txn, long epoch, Consumer<CommandStore> forEach)
     {
-        forEachLocal(txn.keys, forEach);
+        forEachLocal(txn.keys, epoch, forEach);
     }
 
     public void forEachLocal(TxnRequest.Scope scope, Consumer<CommandStore> forEach)
@@ -229,14 +231,14 @@ public class Node implements ConfigurationService.Listener
         return commandStores.mapReduce(scope, map, reduce);
     }
 
-    public <T> T ifLocal(Key key, Function<CommandStore, T> ifLocal)
+    public <T> T ifLocal(Key key, long epoch, Function<CommandStore, T> ifLocal)
     {
-        return commandStores.mapReduce(key, ifLocal, (a, b) -> { throw new IllegalStateException();} );
+        return commandStores.mapReduce(key, epoch, ifLocal, (a, b) -> { throw new IllegalStateException();} );
     }
 
-    public <T extends Collection<CommandStore>> T collectLocal(Keys keys, IntFunction<T> factory)
+    public <T extends Collection<CommandStore>> T collectLocal(Keys keys, long epoch, IntFunction<T> factory)
     {
-        return commandStores.collect(keys, factory);
+        return commandStores.collect(keys, epoch, factory);
     }
 
     public <T extends Collection<CommandStore>> T collectLocal(TxnRequest.Scope scope, IntFunction<T> factory)
@@ -305,6 +307,8 @@ public class Node implements ConfigurationService.Listener
 
     public void reply(Id replyingToNode, ReplyContext replyContext, Reply send)
     {
+        if (send == null)
+            throw new NullPointerException();
         messageSink.reply(replyingToNode, replyContext, send);
     }
 
