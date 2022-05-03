@@ -56,6 +56,20 @@ public abstract class CommandStores
         }
     }
 
+    static class KeysAndEpochRange
+    {
+        final Keys keys;
+        final long minEpoch;
+        final long maxEpoch;
+
+        KeysAndEpochRange(Keys keys, long minEpoch, long maxEpoch)
+        {
+            this.keys = keys;
+            this.minEpoch = minEpoch;
+            this.maxEpoch = maxEpoch;
+        }
+    }
+
     static class KeyAndEpoch
     {
         final Key key;
@@ -155,12 +169,22 @@ public abstract class CommandStores
 
         long shards(TxnRequest.Scope scope)
         {
+            return shards(scope.keys(), scope.minEpoch(), scope.maxEpoch());
+        }
+
+        long shards(KeysAndEpochRange scope)
+        {
+            return shards(scope.keys, scope.minEpoch, scope.maxEpoch);
+        }
+
+        long shards(Keys keys, long minEpoch, long maxEpoch)
+        {
             long accumulate = 0L;
             // TODO (now): it should be safe to only evaluate in the two precise epochs that are relevant, but confirm
-            for (int i = Math.max(0, indexForEpoch(scope.minEpoch())), maxi = indexForEpoch(scope.maxEpoch());
+            for (int i = Math.max(0, indexForEpoch(minEpoch)), maxi = indexForEpoch(maxEpoch);
                  i <= maxi ; ++i)
             {
-                accumulate = scope.keys().foldl(ranges[i], ShardedRanges::addKeyIndex, shards.length, accumulate, -1L);
+                accumulate = keys.foldl(ranges[i], ShardedRanges::addKeyIndex, shards.length, accumulate, -1L);
             }
             return accumulate;
         }
@@ -179,7 +203,7 @@ public abstract class CommandStores
             if (ranges == null)
                 return 0L;
             int index = ranges.rangeIndexForKey(scope.key);
-            return index < 0 ? 0L : 1L << index;
+            return index < 0 ? 0L : addKeyIndex(scope.key, shards.length, 0L);
         }
 
         KeyRanges currentRanges()
@@ -311,6 +335,11 @@ public abstract class CommandStores
     public void forEach(Keys keys, long epoch, Consumer<CommandStore> forEach)
     {
         forEach(ShardedRanges::shards, new KeysAndEpoch(keys, epoch), forEach);
+    }
+
+    public void forEach(Keys keys, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
+    {
+        forEach(ShardedRanges::shards, new KeysAndEpochRange(keys, minEpoch, maxEpoch), forEach);
     }
 
     public void forEach(TxnRequest.Scope scope, Consumer<CommandStore> forEach)

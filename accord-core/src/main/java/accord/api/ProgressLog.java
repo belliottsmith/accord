@@ -17,18 +17,18 @@ import accord.txn.TxnId;
  * The basic logical flow for ensuring a transaction is committed and applied at all replicas is as follows:
  *
  *  - First, ensure a quorum of the home shard is aware of the transaction by invoking {@link InformHomeOfTxn}.
- *    Entry by {@link #nonHomePreaccept} Non-home shards may now forget this transaction for replay purposes
- *    ({@link #nonHomePostPreaccept}).
+ *    Entry by {@link #preaccept} Non-home shards may now forget this transaction for replay purposes.
  *
  *  - Non-home shards may also be informed of transactions that are blocking the progress of other transactions.
  *    If the {@code waitingOn} transaction that is blocking progress is uncommitted it is required that the progress
- *    log invoke {@link CheckOnUncommitted} for the transaction if no {@link #nonHomeCommit(TxnId)} is witnessed.
+ *    log invoke {@link CheckOnUncommitted} for the transaction if no {@link #commit} is witnessed.
  *
- *  - Members of the home shard will be informed of a transaction to monitor by the invocation of {@link #uncommitted}.
- *    If this is not followed closely by {@link #committed}, {@link accord.coordinate.MaybeRecover} should be invoked.
+ *  - Members of the home shard will be informed of a transaction to monitor by the invocation of {@link #preaccept} or
+ *    {@link #accept}. If this is not followed closely by {@link #commit}, {@link accord.coordinate.MaybeRecover} should
+ *    be invoked.
  *
  *  - Members of the home shard will later be informed that the transaction is {@link #readyToExecute}.
- *    If this is not followed closely by {@link #executed(TxnId)}, {@link accord.coordinate.MaybeRecover} should be invoked.
+ *    If this is not followed closely by {@link #executed}, {@link accord.coordinate.MaybeRecover} should be invoked.
  *
  *  - Finally, it is up to each shard to independently coordinate disseminating the write to every replica.
  *
@@ -47,19 +47,37 @@ public interface ProgressLog
     }
 
     /**
-     * Has been witnessed as uncommitted
+     * Has been pre-accepted.
+     *
+     * A home shard should monitor this transaction for global progress.
+     * A non-home shard should begin monitoring this transaction only to ensure it reaches the Accept phase, or is
+     * witnessed by a majority of the home shard.
      */
-    void uncommitted(TxnId txnId);
+    void preaccept(TxnId txnId, boolean isHomeShard);
+
+    /**
+     * Has been accepted
+     *
+     * A home shard should monitor this transaction for global progress.
+     * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
+     */
+    void accept(TxnId txnId, boolean isHomeShard);
 
     /**
      * Has committed
+     *
+     * A home shard should monitor this transaction for global progress.
+     * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void committed(TxnId txnId);
+    void commit(TxnId txnId, boolean isHomeCommitShard, boolean isHomeExecuteShard);
 
     /**
-     * The home shard is now waiting to make progress, as all local dependencies have applied
+     * The transaction is waiting to make progress, as all local dependencies have applied.
+     *
+     * A home shard should monitor this transaction for global progress.
+     * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void readyToExecute(TxnId txnId);
+    void readyToExecute(TxnId txnId, boolean isHomeShard);
 
     /**
      * The transaction's outcome has been durably recorded (but not necessarily applied) locally.
@@ -70,29 +88,17 @@ public interface ProgressLog
      *
      * May also permit aborting a pending waitingOn-triggered event.
      */
-    void executed(TxnId txnId);
+    void executed(TxnId txnId, boolean isHomeShard);
 
     /**
      * The transaction's outcome has been durably recorded (but not necessarily applied) at a quorum of all shards.
+     *
+     * If this replica has not witnessed the outcome of the transaction, it should poll a majority of the home shard
+     * for its outcome.
+     *
+     * Otherwise, this transaction no longer needs to be monitored by either home or non-home shards.
      */
     void executedOnAllShards(TxnId txnId);
-
-    /**
-     * Has been witnessed as pre-accepted by a non-home command store, so it will be tracked only long enough
-     * to be certain it is known by the home shard.
-     */
-    void nonHomePreaccept(TxnId txnId);
-
-    /**
-     * Has been witnessed as accepted or later by a non-home command store, so it may stop tracking the transaction.
-     */
-    void nonHomePostPreaccept(TxnId txnId);
-
-    /**
-     * Has been witnessed as committed by a non-home command store. This may permit cancellation of a
-     * pending waitingOn operation.
-     */
-    void nonHomeCommit(TxnId txnId);
 
     /**
      * The parameter is a command that some other command's execution is most proximally blocked by.

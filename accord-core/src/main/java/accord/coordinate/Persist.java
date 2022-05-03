@@ -23,24 +23,24 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
     final Node node;
     final TxnId txnId;
     final Key homeKey;
-    final long executionEpoch;
+    final Timestamp executeAt;
     final QuorumTracker tracker;
     Throwable failure;
 
     public static AsyncFuture<Void> persist(Node node, Topologies topologies, TxnId txnId, Key homeKey, Txn txn, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
     {
-        Persist persist = new Persist(node, topologies, txnId, homeKey, executeAt.epoch);
+        Persist persist = new Persist(node, topologies, txnId, homeKey, executeAt);
         node.send(topologies.nodes(), to -> new Apply(to, topologies, txnId, txn, homeKey, executeAt, deps, writes, result), persist);
         return persist;
     }
 
-    private Persist(Node node, Topologies topologies, TxnId txnId, Key homeKey, long executionEpoch)
+    private Persist(Node node, Topologies topologies, TxnId txnId, Key homeKey, Timestamp executeAt)
     {
         this.node = node;
         this.txnId = txnId;
         this.homeKey = homeKey;
         this.tracker = new QuorumTracker(topologies);
-        this.executionEpoch = executionEpoch;
+        this.executeAt = executeAt;
     }
 
     @Override
@@ -50,7 +50,7 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
         {
             // TODO: send to non-home replicas also, so they may clear their log more easily?
             // TODO (now): decide if we send to all home replicas across all epochs, or just original epoch or latest?
-            node.send(tracker.topologies().current().forKey(homeKey), new InformOfPersistence(txnId, homeKey, executionEpoch));
+            node.send(tracker.topologies().current().forKey(homeKey), new InformOfPersistence(txnId, homeKey, executeAt));
             trySuccess(null);
         }
     }

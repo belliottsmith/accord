@@ -1,5 +1,6 @@
 package accord.impl;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -34,18 +35,21 @@ import accord.txn.Txn;
 import accord.txn.TxnId;
 import accord.txn.Writes;
 
+import static accord.coordinate.CheckOnExecuted.checkOnExecuted;
 import static accord.coordinate.CheckOnUncommitted.checkOnUncommitted;
 import static accord.coordinate.InformHomeOfTxn.inform;
 import static accord.coordinate.MaybeRecover.maybeRecover;
 import static accord.impl.SimpleProgressLog.CoordinateApplyAndCheck.applyAndCheck;
 import static accord.impl.SimpleProgressLog.ExternalStatus.Committed;
+import static accord.impl.SimpleProgressLog.ExternalStatus.CommittedWontExecute;
+import static accord.impl.SimpleProgressLog.ExternalStatus.ExecutedOnAllShardsButNotThisInstance;
 import static accord.impl.SimpleProgressLog.ExternalStatus.NonHomePreAccept;
 import static accord.impl.SimpleProgressLog.ExternalStatus.NonHomeSafe;
 import static accord.impl.SimpleProgressLog.ExternalStatus.NonHomeWaitingOn;
 import static accord.impl.SimpleProgressLog.ExternalStatus.ReadyToExecute;
 import static accord.impl.SimpleProgressLog.ExternalStatus.ExecutedOnAllShards;
 import static accord.impl.SimpleProgressLog.ExternalStatus.Uncommitted;
-import static accord.impl.SimpleProgressLog.ExternalStatus.WaitingForExecutedOnAllShards;
+import static accord.impl.SimpleProgressLog.ExternalStatus.ExecutedAndWaitingForAllShards;
 import static accord.impl.SimpleProgressLog.InternalStatus.Done;
 import static accord.impl.SimpleProgressLog.InternalStatus.Investigating;
 import static accord.impl.SimpleProgressLog.InternalStatus.NoProgress;
@@ -60,28 +64,34 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
     {
         NonHomePreAccept, NonHomeSafe, NonHomeWaitingOn,
         Uncommitted, Committed,
-        ReadyToExecute, Executed,
-        WaitingForExecutedOnAllShards, ExecutedOnAllShards
+        ReadyToExecute, CommittedWontExecute,
+        ExecutedAndWaitingForAllShards, ExecutedOnAllShardsButNotThisInstance, ExecutedOnAllShards
     }
     enum InternalStatus { Waiting, NoProgress, Investigating, NoProgressExpected, Done }
 
     static class State
     {
+        final TxnId txnId;
+
+        Txn txn;
+        Key someKey, homeKey;
+
         ExternalStatus externalStatus;
         InternalStatus internalStatus = Waiting;
+        Set<Id> waitingOnExecute; // TODO: limit to the shards owned by the node
 
-        Set<Id> waitingOn; // TODO: limit to the shards owned by the node
-        Command command;
+        Status status;
+        Ballot promised;
+        boolean promiseHasBeenAccepted;
 
-        Status maxStatus;
-        Ballot maxPromised;
-        boolean maxPromiseHasBeenAccepted;
+        Timestamp blockingTxnWithExecuteAt;
 
-        Timestamp maxExecuteAtWithTxnAsDependency;
+        Object debugInProgress;
 
-        Object inProgress;
-
-        State(TxnId ignore) {}
+        State(TxnId txnId)
+        {
+            this.txnId = txnId;
+        }
 
         State ensureAtLeast(ExternalStatus newExternalStatus, InternalStatus newInternalStatus)
         {
@@ -100,45 +110,82 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             return this;
         }
 
-        void setApplied(Set<Id> waitingOn, Command command)
-        {
-            if (this.waitingOn == null)
-            {
-                this.waitingOn = waitingOn;
-                setCommand(command);
-            }
-        }
-
         void setCommand(Command command)
         {
-            this.command = command;
-            if (maxStatus == null || maxStatus.compareTo(command.status()) < 0)
-                maxStatus = command.status();
-            if (maxPromised == null || maxPromised.compareTo(command.promised()) < 0)
-                maxPromised = command.promised();
-            maxPromiseHasBeenAccepted |= command.accepted().equals(maxPromised);
+            if (status == null || status.compareTo(command.status()) < 0)
+                status = command.status();
+            if (promised == null || promised.compareTo(command.promised()) < 0)
+                promised = command.promised();
+            promiseHasBeenAccepted |= command.accepted().equals(promised);
         }
 
         void recordBlocker(Command waitingCommand, Command blockedByUncommittedCommand)
         {
-            Preconditions.checkArgument(blockedByUncommittedCommand.txnId().equals(command.txnId()));
-            if (maxExecuteAtWithTxnAsDependency == null || maxExecuteAtWithTxnAsDependency.compareTo(waitingCommand.executeAt()) < 0)
+            Preconditions.checkArgument(blockedByUncommittedCommand.txnId().equals(txnId));
+            if (blockingTxnWithExecuteAt == null || blockingTxnWithExecuteAt.compareTo(waitingCommand.executeAt()) < 0)
             {
-                maxExecuteAtWithTxnAsDependency = waitingCommand.executeAt();
+                blockingTxnWithExecuteAt = waitingCommand.executeAt();
             }
         }
 
         void recordCheckStatus(CheckStatusOk ok)
         {
-            if (ok.status.compareTo(maxStatus) > 0) maxStatus = ok.status;
-            if (ok.promised.compareTo(maxPromised) > 0)
+            if (ok.status.compareTo(status) > 0) status = ok.status;
+            if (ok.promised.compareTo(promised) > 0)
             {
-                maxPromised = ok.promised;
-                maxPromiseHasBeenAccepted = ok.accepted.equals(ok.promised);
+                promised = ok.promised;
+                promiseHasBeenAccepted = ok.accepted.equals(ok.promised);
             }
-            else if (ok.promised.equals(maxPromised))
+            else if (ok.promised.equals(promised))
             {
-                maxPromiseHasBeenAccepted |= ok.accepted.equals(ok.promised);
+                promiseHasBeenAccepted |= ok.accepted.equals(ok.promised);
+            }
+        }
+
+        void executedOnAllShards(Command newCommand)
+        {
+            if (newCommand != null)
+                setCommand(newCommand);
+
+            if (waitingOnExecute == null)
+                waitingOnExecute = Collections.emptySet();
+
+            if (externalStatus.compareTo(ExecutedAndWaitingForAllShards) < 0 && command.executes())
+            {
+                externalStatus = ExecutedOnAllShardsButNotThisInstance;
+                internalStatus = NoProgress;
+            }
+            else
+            {
+                externalStatus = ExecutedOnAllShards;
+                internalStatus = NoProgressExpected;
+            }
+        }
+
+        void executed(Node node, Command command)
+        {
+            setCommand(command);
+
+            // TODO (now): this should be limited to the replicas of this shard?
+
+            switch (externalStatus)
+            {
+                default: throw new IllegalStateException();
+                case NonHomeWaitingOn:
+                case NonHomePreAccept:
+                case NonHomeSafe:
+                case Uncommitted:
+                case Committed:
+                case ReadyToExecute:
+                    waitingOnExecute = new HashSet<>(node.topology().unsyncForTxn(this.command.txn(), this.command.executeAt().epoch).nodes());
+                    waitingOnExecute.remove(node.id());
+                    externalStatus = ExecutedAndWaitingForAllShards;
+                    break;
+                case ExecutedOnAllShardsButNotThisInstance:
+                    externalStatus = ExecutedOnAllShards;
+                    internalStatus = NoProgressExpected;
+                case ExecutedAndWaitingForAllShards:
+                case ExecutedOnAllShards:
             }
         }
 
@@ -167,29 +214,91 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             this.commandStore = commandStore;
         }
 
-        @Override
-        public void nonHomePreaccept(TxnId txnId)
+        private void nonHomeUnsafe(TxnId txnId)
         {
+            Command command = commandStore.command(txnId);
             stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(NonHomePreAccept, Waiting, commandStore.command(txnId));
+                    .ensureAtLeast(NonHomePreAccept, Waiting, command);
         }
 
-        @Override
-        public void nonHomePostPreaccept(TxnId txnId)
+        private void nonHomeSafe(TxnId txnId)
         {
+            Command command = commandStore.command(txnId);
             stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(NonHomeSafe, NoProgressExpected, commandStore.command(txnId));
+                    .ensureAtLeast(NonHomeSafe, NoProgressExpected, command);
         }
 
-        @Override
-        public void nonHomeCommit(TxnId txnId)
+        private void nonHomeCommit(TxnId txnId)
         {
             State state = stateMap.get(txnId);
-            if (state.externalStatus == NonHomeWaitingOn)
+            if (state != null && state.externalStatus == NonHomeWaitingOn)
             {
                 state.externalStatus = NonHomeSafe;
                 state.internalStatus = NoProgressExpected;
             }
+        }
+
+        private void homeUncommitted(TxnId txnId)
+        {
+            Command command = commandStore.command(txnId);
+            stateMap.computeIfAbsent(txnId, State::new)
+                    .ensureAtLeast(Uncommitted, Waiting, command);
+        }
+
+        @Override
+        public void preaccept(TxnId txnId, boolean isHomeShard)
+        {
+            if (isHomeShard) homeUncommitted(txnId);
+            else nonHomeUnsafe(txnId);
+        }
+
+        @Override
+        public void accept(TxnId txnId, boolean isHomeShard)
+        {
+            if (isHomeShard) homeUncommitted(txnId);
+            else nonHomeSafe(txnId);
+        }
+
+        @Override
+        public void commit(TxnId txnId, boolean isHomeCommitShard, boolean isHomeExecuteShard)
+        {
+            if (!isHomeCommitShard && !isHomeExecuteShard)
+            {
+                nonHomeCommit(txnId);
+            }
+            else
+            {
+                Command command = commandStore.command(txnId);
+                stateMap.computeIfAbsent(txnId, State::new)
+                        .ensureAtLeast(isHomeExecuteShard ? Committed : CommittedWontExecute, NoProgressExpected, command);
+            }
+        }
+
+        @Override
+        public void readyToExecute(TxnId txnId, boolean isHomeShard)
+        {
+            if (!isHomeShard)
+                return;
+
+            Command command = commandStore.command(txnId);
+            stateMap.computeIfAbsent(txnId, State::new)
+                    .ensureAtLeast(ReadyToExecute, Waiting, command);
+        }
+
+        @Override
+        public void executed(TxnId txnId, boolean isHomeShard)
+        {
+            Command command = commandStore.command(txnId);
+            stateMap.computeIfAbsent(txnId, State::new)
+                    .executed(node, command);
+        }
+
+        @Override
+        public void executedOnAllShards(TxnId txnId)
+        {
+            Command command = commandStore.command(txnId);
+            stateMap.computeIfAbsent(txnId, State::new)
+                    .executedOnAllShards(command);
         }
 
         @Override
@@ -203,47 +312,6 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                         .ensureAtLeast(NonHomeWaitingOn, Waiting, blockedByCommand)
                         .recordBlocker(waitingCommand, blockedByCommand);
             }
-        }
-
-        @Override
-        public void uncommitted(TxnId txnId)
-        {
-            stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(Uncommitted, Waiting, commandStore.command(txnId));
-        }
-
-        @Override
-        public void committed(TxnId txnId)
-        {
-            stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(Committed, NoProgressExpected, commandStore.command(txnId));
-        }
-
-        @Override
-        public void readyToExecute(TxnId txnId)
-        {
-            stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(ReadyToExecute, Waiting, commandStore.command(txnId));
-        }
-
-        @Override
-        public void executedOnAllShards(TxnId txnId)
-        {
-            stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(ExternalStatus.Executed, NoProgressExpected, commandStore.command(txnId));
-        }
-
-        @Override
-        public void executed(TxnId txnId)
-        {
-            Command command = commandStore.command(txnId);
-            // TODO (now): this should be limited to the replicas of this shard?
-            Set<Id> nodes = new HashSet<>(node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch).nodes());
-            nodes.remove(commandStore.node().id());
-
-            stateMap.computeIfAbsent(txnId, State::new)
-                    .ensureAtLeast(WaitingForExecutedOnAllShards, Waiting, commandStore.command(txnId))
-                    .setApplied(nodes, command);
         }
 
         SimpleProgressLog parent()
@@ -281,7 +349,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                 case NonHomePreAccept:
                 {
                     CompletionStage<Void> inform = inform(node, txnId, state.command.txn(), state.command.homeKey());
-                    state.inProgress = inform;
+                    state.debugInProgress = inform;
                     inform.whenComplete((success, fail) -> {
                         if (state.externalStatus != NonHomePreAccept)
                             return;
@@ -297,7 +365,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                     // check status with the only keys we know, if any, then:
                     // 1. if we cannot find any primary record of the transaction, then it cannot be a dependency so record this fact
                     // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
-                    Timestamp maxExecuteAtWithTxnAsDependency = state.maxExecuteAtWithTxnAsDependency;
+                    Timestamp maxExecuteAtWithTxnAsDependency = state.blockingTxnWithExecuteAt;
                     Key key = state.command.someKey();
                     long epoch = state.command.is(Status.Committed) ? state.command.executeAt().epoch : txnId.epoch;
                     Shard someShard = node.topology().forEpochIfKnown(key, epoch);
@@ -307,10 +375,11 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                         state.internalStatus = Waiting;
                         continue;
                     }
+                    // TODO (now): if we have a quorum of PreAccept and we have contacted the home shard then we can set NonHomeSafe
                     CheckOnUncommitted check = checkOnUncommitted(node, txnId, state.command.txn(),
                                                                   key, someShard, epoch,
-                                                                  state.maxExecuteAtWithTxnAsDependency);
-                    state.inProgress = check;
+                                                                  state.blockingTxnWithExecuteAt);
+                    state.debugInProgress = check;
                     check.whenComplete((success, fail) -> {
                         if (state.externalStatus != NonHomeWaitingOn)
                             return;
@@ -322,7 +391,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                             return;
 
                         state.recordCheckStatus(success);
-                        if ((success.status.compareTo(PreAccepted) < 0 && state.maxExecuteAtWithTxnAsDependency.equals(maxExecuteAtWithTxnAsDependency))
+                        if ((success.status.compareTo(PreAccepted) < 0 && state.blockingTxnWithExecuteAt.equals(maxExecuteAtWithTxnAsDependency))
                             || success.status.compareTo(Status.Committed) >= 0)
                         {
                             state.externalStatus = NonHomeSafe;
@@ -346,16 +415,15 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                     }
                     CompletionStage<CheckStatusOk> recover = maybeRecover(node, txnId, state.command.txn(),
                                                                           homeKey, homeShard, homeEpoch,
-                                                                          state.maxStatus, state.maxPromised, state.maxPromiseHasBeenAccepted);
-                    state.inProgress = recover;
+                                                                          state.status, state.promised, state.promiseHasBeenAccepted);
+                    state.debugInProgress = recover;
                     recover.whenComplete((success, fail) -> {
                         if (state.externalStatus.compareTo(ReadyToExecute) <= 0 && state.internalStatus == Investigating)
                         {
                             if (fail == null && success == null)
                             {
                                 // we have globally persisted the result, so move to waiting for the result to be fully replicated amongst our shards
-                                stateMap.computeIfAbsent(txnId, State::new)
-                                        .ensureAtLeast(ExternalStatus.Executed, NoProgressExpected, null);
+                                state.executedOnAllShards(null);
                             }
                             else
                             {
@@ -367,23 +435,39 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                     });
                     break;
                 }
-
-                case WaitingForExecutedOnAllShards:
+                case ExecutedOnAllShardsButNotThisInstance:
                 {
-
+                    Key homeKey = state.command.homeKey();
+                    long homeEpoch = state.command.executeAt().epoch;
+                    Shard homeShard = node.topology().forEpochIfKnown(homeKey, homeEpoch);
+                    if (homeShard == null)
+                    {
+                        node.configService().fetchTopologyForEpoch(txnId.epoch);
+                        state.internalStatus = Waiting;
+                        continue;
+                    }
+                    checkOnExecuted(node, txnId, state.command.txn(),homeKey, homeShard, homeEpoch)
+                    .whenComplete((success, fail) -> {
+                        if (state.externalStatus == ExecutedOnAllShardsButNotThisInstance && state.internalStatus == Investigating)
+                            state.internalStatus = NoProgress;
+                    });
+                    break;
+                }
+                case ExecutedAndWaitingForAllShards:
+                {
                     if (!state.command.hasBeen(Executed))
                         throw new AssertionError();
 
-                    if (state.waitingOn.isEmpty())
+                    if (state.waitingOnExecute.isEmpty())
                     {
                         state.ensureAtLeast(ExecutedOnAllShards, Done);
                     }
                     else
                     {
                         CompletionStage<Void> sendAndCheck = applyAndCheck(node, state);
-                        state.inProgress = sendAndCheck;
+                        state.debugInProgress = sendAndCheck;
                         sendAndCheck.whenComplete((success, fail) -> {
-                            if (state.waitingOn.isEmpty())
+                            if (state.waitingOnExecute.isEmpty())
                                 state.ensureAtLeast(ExecutedOnAllShards, Done);
                             else
                                 state.internalStatus = Waiting;
@@ -406,12 +490,12 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             Command command = state.command;
             // TODO (now): whether we need to send to future shards depends on sync logic
             Topologies topologies = node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch, Long.MAX_VALUE);
-            state.waitingOn.retainAll(topologies.nodes()); // we might have had some nodes from older shards that are now redundant
-            node.send(state.waitingOn, id -> new ApplyAndCheck(id, topologies,
-                                                         command.txnId(), command.txn(), command.homeKey(),
-                                                         command.savedDeps(), command.executeAt(),
-                                                         command.writes(), command.result(),
-                                                         state.waitingOn),
+            state.waitingOnExecute.retainAll(topologies.nodes()); // we might have had some nodes from older shards that are now redundant
+            node.send(state.waitingOnExecute, id -> new ApplyAndCheck(id, topologies,
+                                                                      command.txnId(), command.txn(), command.homeKey(),
+                                                                      command.savedDeps(), command.executeAt(),
+                                                                      command.writes(), command.result(),
+                                                                      state.waitingOnExecute),
                       coordinate);
             return coordinate;
         }
@@ -419,14 +503,14 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         CoordinateApplyAndCheck(State state)
         {
             this.state = state;
-            this.waitingOnResponses = new HashSet<>(state.waitingOn);
+            this.waitingOnResponses = new HashSet<>(state.waitingOnExecute);
         }
 
         @Override
         public void onSuccess(Id from, ApplyAndCheckOk response)
         {
-            state.waitingOn.retainAll(response.waitingOn);
-            if (state.waitingOn.isEmpty() || (waitingOnResponses.remove(from) && waitingOnResponses.isEmpty()))
+            state.waitingOnExecute.retainAll(response.waitingOn);
+            if (state.waitingOnExecute.isEmpty() || (waitingOnResponses.remove(from) && waitingOnResponses.isEmpty()))
                 complete(null);
         }
 
@@ -454,8 +538,8 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                 instance.command(txnId).apply(txn, homeKey, executeAt, deps, writes, result);
                 SimpleProgressLog.Instance log = ((SimpleProgressLog.Instance)instance.progressLog());
                 State state = log.parent().stateMap.get(txnId);
-                state.waitingOn.retainAll(waitingOn);
-                return new ApplyAndCheckOk(state.waitingOn);
+                state.waitingOnExecute.retainAll(waitingOn);
+                return new ApplyAndCheckOk(state.waitingOnExecute);
             }, (a, b) -> {
                 a.waitingOn.retainAll(b.waitingOn);
                 return a;

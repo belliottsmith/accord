@@ -57,7 +57,7 @@ public class EpochSync implements Runnable
         {
             node.forEachLocal(commandStore -> {
                 Command command = commandStore.command(txnId);
-                command.commit(txn, homeKey, deps, executeAt);
+                command.commit(txn, homeKey, executeAt, deps);
             });
             node.reply(from, replyContext, SyncAck.INSTANCE);
         }

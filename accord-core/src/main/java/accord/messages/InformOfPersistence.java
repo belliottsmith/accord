@@ -3,6 +3,7 @@ package accord.messages;
 import accord.api.Key;
 import accord.local.Node;
 import accord.local.Node.Id;
+import accord.txn.Timestamp;
 import accord.txn.TxnId;
 
 import static accord.messages.InformOfTxn.InformOfTxnNack.nack;
@@ -12,19 +13,19 @@ public class InformOfPersistence implements Request
 {
     final TxnId txnId;
     final Key homeKey;
-    final long epoch;
+    final Timestamp executeAt;
 
-    public InformOfPersistence(TxnId txnId, Key homeKey, long epoch)
+    public InformOfPersistence(TxnId txnId, Key homeKey, Timestamp executeAt)
     {
         this.txnId = txnId;
         this.homeKey = homeKey;
-        this.epoch = epoch;
+        this.executeAt = executeAt;
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        Reply reply = node.ifLocal(homeKey, epoch, instance -> {
-            instance.command(txnId).setGloballyPersistent();
+        Reply reply = node.ifLocal(homeKey, executeAt.epoch, instance -> {
+            instance.command(txnId).setGloballyPersistent(homeKey, executeAt);
             instance.progressLog().executedOnAllShards(txnId);
             return ok();
         });

@@ -72,7 +72,7 @@ public class TopologyUpdate
                         break;
                     case Committed:
                     case ReadyToExecute:
-                        commandStore.command(txnId).commit(txn, homeKey, deps, executeAt);
+                        commandStore.command(txnId).commit(txn, homeKey, executeAt, deps);
                         break;
                     case Executed:
                     case Applied:

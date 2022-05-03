@@ -216,6 +216,11 @@ public class Node implements ConfigurationService.Listener
         commandStores.forEach(keys, epoch, forEach);
     }
 
+    public void forEachLocal(Keys keys, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
+    {
+        commandStores.forEach(keys, minEpoch, maxEpoch, forEach);
+    }
+
     public void forEachLocal(Txn txn, long epoch, Consumer<CommandStore> forEach)
     {
         forEachLocal(txn.keys, epoch, forEach);

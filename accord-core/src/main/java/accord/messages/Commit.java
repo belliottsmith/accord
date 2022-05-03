@@ -29,7 +29,7 @@ public class Commit extends ReadData
 
     public void process(Node node, Id from, ReplyContext replyContext)
     {
-        node.forEachLocal(scope(), instance -> instance.command(txnId).commit(txn, homeKey, deps, executeAt));
+        node.forEachLocal(scope(), instance -> instance.command(txnId).commit(txn, homeKey, executeAt, deps));
         if (read) super.process(node, from, replyContext);
     }
 

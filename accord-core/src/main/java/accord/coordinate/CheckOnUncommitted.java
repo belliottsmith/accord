@@ -65,7 +65,10 @@ public class CheckOnUncommitted extends CheckShardStatus
         try
         {
             CheckStatusOkFull full = (CheckStatusOkFull) max;
-            node.forEachLocal(txn.keys, txnId.epoch, commandStore -> {
+            long minEpoch = txnId.epoch;
+            long maxEpoch = (maxExecuteAtWithTxnAsDependency == null ? txnId : maxExecuteAtWithTxnAsDependency).epoch;
+//            long maxEpoch = txnId.epoch;
+            node.forEachLocal(txn.keys, minEpoch, maxEpoch, commandStore -> {
                 Command command = commandStore.command(txnId);
                 switch (full.status)
                 {
@@ -86,7 +89,7 @@ public class CheckOnUncommitted extends CheckShardStatus
                     case ReadyToExecute:
                     case Executed:
                     case Applied:
-                        command.commit(txn, full.homeKey, full.deps, full.executeAt);
+                        command.commit(txn, full.homeKey, full.executeAt, full.deps);
                         break;
                 }
             });
