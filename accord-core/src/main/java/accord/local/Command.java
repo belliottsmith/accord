@@ -28,7 +28,7 @@ public class Command implements Listener, Consumer<Listener>
 {
     public final CommandStore commandStore;
     private final TxnId txnId;
-    private Key homeKey; // TODO: compress these
+    private Key homeKey, localKey;
     private Txn txn; // TODO: only store this on the home shard, or split to each shard independently
     private Ballot promised = Ballot.ZERO, accepted = Ballot.ZERO;
     private Timestamp executeAt, executeAtExclusiveLowerBound; // TODO: compress these states together
@@ -123,7 +123,7 @@ public class Command implements Listener, Consumer<Listener>
     // requires that command != null
     // relies on mutual exclusion for each key
     // note: we do not set status = newStatus, we only use it to decide how we register with the retryLog
-    private void witness(Txn txn, Key homeKey)
+    private void witness(Txn txn, Key homeKey, Key localKey)
     {
         if (hasBeen(PreAccepted))
             return;
@@ -136,6 +136,7 @@ public class Command implements Listener, Consumer<Listener>
 
         txn(txn);
         homeKey(homeKey);
+        localKey(localKey);
         this.executeAt = witnessed;
         this.status = PreAccepted;
 
@@ -145,7 +146,7 @@ public class Command implements Listener, Consumer<Listener>
         });
     }
 
-    public boolean preaccept(Txn txn, Key homeKey)
+    public boolean preaccept(Txn txn, Key homeKey, Key localKey)
     {
         if (promised.compareTo(Ballot.ZERO) > 0)
             return false;
@@ -153,13 +154,15 @@ public class Command implements Listener, Consumer<Listener>
         if (hasBeen(PreAccepted))
             return true;
 
-        witness(txn, homeKey);
-        commandStore.progressLog().preaccept(txnId, isHomeShard(txnId.epoch, homeKey));
+        witness(txn, homeKey, localKey);
+        if (localKey != null && contains(txnId.epoch, localKey))
+            commandStore.progressLog().preaccept(txnId, localKey.equals(homeKey));
+
         listeners.forEach(this);
         return true;
     }
 
-    public boolean accept(Ballot ballot, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
+    public boolean accept(Ballot ballot, Txn txn, Key homeKey, Key localKey, Timestamp executeAt, Dependencies deps)
     {
         if (this.promised.compareTo(ballot) > 0)
             return false;
@@ -167,19 +170,21 @@ public class Command implements Listener, Consumer<Listener>
         if (hasBeen(Committed))
             return false;
 
-        witness(txn, homeKey);
+        witness(txn, homeKey, localKey);
         this.deps = deps;
         this.executeAt = executeAt;
         promised = accepted = ballot;
         status = Accepted;
 
-        commandStore.progressLog().accept(txnId, isHomeShard(txnId.epoch, homeKey));
+        if (localKey != null && contains(txnId.epoch, localKey))
+            commandStore.progressLog().accept(txnId, localKey.equals(homeKey));
+
         listeners.forEach(this);
         return true;
     }
 
     // relies on mutual exclusion for each key
-    public boolean commit(Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
+    public boolean commit(Txn txn, Key homeKey, Key localKey, Timestamp executeAt, Dependencies deps)
     {
         if (hasBeen(Committed))
         {
@@ -189,7 +194,7 @@ public class Command implements Listener, Consumer<Listener>
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
         }
 
-        witness(txn, homeKey);
+        witness(txn, homeKey, localKey);
         this.status = Committed;
         this.deps = deps;
         this.executeAt = executeAt;
@@ -208,7 +213,6 @@ public class Command implements Listener, Consumer<Listener>
                     throw new IllegalStateException();
                 case NotWitnessed:
                     Txn depTxn = savedDeps().get(id);
-                    command.someKey(depTxn.keys.get(0));
                     command.txn(depTxn);
                 case PreAccepted:
                 case Accepted:
@@ -237,44 +241,47 @@ public class Command implements Listener, Consumer<Listener>
 
         // TODO: we might not be the homeShard for later phases if we are no longer replicas of the range at executeAt;
         //       this should be fine, but it might be helpful to provide this info to the progressLog here?
-        commandStore.progressLog().commit(txnId, isHomeShard(txnId.epoch, homeKey), isHomeShard(executeAt.epoch, homeKey));
+        if (localKey != null && contains(txnId.epoch, localKey))
+            commandStore.progressLog().commit(txnId, contains(txnId.epoch, homeKey), contains(executeAt.epoch, homeKey));
 
+        maybeExecute(false);
         listeners.forEach(this);
-        maybeExecute();
         return true;
     }
 
-    public boolean apply(Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
+    public boolean apply(Txn txn, Key homeKey, Key localKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
     {
         if (hasBeen(Executed) && executeAt.equals(this.executeAt))
             return false;
         else if (!hasBeen(Committed))
-            commit(txn, homeKey, executeAt, deps);
+            commit(txn, homeKey, localKey, executeAt, deps);
         else if (!executeAt.equals(this.executeAt))
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
 
+        this.localKey = localKey;
         this.executeAt = executeAt;
         this.writes = writes;
         this.result = result;
         this.status = Executed;
 
-        this.commandStore.progressLog().executed(txnId, isHomeShard(executeAt.epoch, homeKey));
 
+        if (localKey != null && contains(executeAt.epoch, localKey))
+            this.commandStore.progressLog().executed(txnId, localKey.equals(homeKey));
+
+        maybeExecute(false);
         this.listeners.forEach(this);
-        maybeExecute();
         return true;
     }
 
-    public boolean recover(Txn txn, Key homeKey, Ballot ballot)
+    public boolean recover(Txn txn, Key homeKey, Key localKey, Ballot ballot)
     {
         if (this.promised.compareTo(ballot) > 0)
             return false;
 
-        Status prevStatus = status;
-        witness(txn, homeKey);
+        witness(txn, homeKey, localKey);
         this.promised = ballot;
-        if (prevStatus == NotWitnessed)
-            commandStore.progressLog().preaccept(txnId, isHomeShard(txnId.epoch, homeKey));
+        if (localKey != null && contains(txnId.epoch, localKey))
+            commandStore.progressLog().preaccept(txnId, localKey.equals(homeKey));
         return true;
     }
 
@@ -319,12 +326,12 @@ public class Command implements Listener, Consumer<Listener>
                 {
                     command.removeListener(this);
                 }
-                maybeExecute();
+                maybeExecute(true);
                 break;
         }
     }
 
-    private void maybeExecute()
+    private void maybeExecute(boolean notifyListeners)
     {
         if (status != Committed && status != Executed)
             return;
@@ -345,13 +352,16 @@ public class Command implements Listener, Consumer<Listener>
             case Committed:
                 // TODO: maintain distinct ReadyToRead and ReadyToWrite states
                 status = ReadyToExecute;
-                commandStore.progressLog().readyToExecute(txnId, isHomeShard(executeAt.epoch, homeKey));
-                listeners.forEach(this);
+                if (localKey != null && contains(executeAt.epoch, localKey))
+                    commandStore.progressLog().readyToExecute(txnId, localKey.equals(homeKey));
+                if (notifyListeners)
+                    listeners.forEach(this);
                 break;
             case Executed:
                 writes.apply(commandStore);
                 status = Applied;
-                listeners.forEach(this);
+                if (notifyListeners)
+                    listeners.forEach(this);
         }
     }
 
@@ -398,6 +408,11 @@ public class Command implements Listener, Consumer<Listener>
      * a transaction, to reduce the cluster-wide overhead of ensuring progress. A transaction that has only been
      * witnessed at PreAccept may however trigger a process of ensuring the home shard is durably informed of
      * the transaction.
+     *
+     * Note that for ProgressLog purposes the "home shard" is the shard as of txnId.epoch.
+     * For recovery purposes the "home shard" is as of txnId.epoch until Committed, and executeAt.epoch once Executed
+     *
+     * TODO: Markdown documentation explaining the home shard and local shard concepts
      */
     public Key homeKey()
     {
@@ -408,6 +423,32 @@ public class Command implements Listener, Consumer<Listener>
     {
         if (this.homeKey == null) this.homeKey = homeKey;
         else if (!this.homeKey.equals(homeKey)) throw new AssertionError();
+    }
+
+    public Key someKey()
+    {
+        if (homeKey != null)
+            return homeKey;
+
+        return txn.keys.get(0);
+    }
+
+    /**
+     * A key nominated to be the primary shard within this node for managing progress of the command.
+     * It is nominated only as of txnId.epoch, and may be null (indicating that this node does not monitor
+     * the progress of this command).
+     *
+     * Preferentially, this is homeKey on nodes that replicate it, and otherwise any key that is replicated, as of txnId.epoch
+     */
+    public Key localKey()
+    {
+        return localKey;
+    }
+
+    public void localKey(Key localKey)
+    {
+        if (this.localKey == null) this.localKey = localKey;
+        else if (!this.localKey.equals(localKey)) throw new AssertionError();
     }
 
     public boolean executes()
@@ -448,12 +489,15 @@ public class Command implements Listener, Consumer<Listener>
         }
     }
 
-    private boolean isHomeShard(long epoch, Key homeKey)
+    public boolean contains(long epoch, Key someKey)
     {
+        if (!commandStore.hashIntersects(someKey))
+            return false;
+
         KeyRanges ranges = commandStore.ranges(epoch);
         if (ranges == null)
             return false;
-        return ranges.contains(homeKey);
+        return ranges.contains(someKey);
     }
 
     private Id coordinator()

@@ -175,6 +175,7 @@ public class Cluster implements Scheduler
                 sinks.add(next);
 
             while (sinks.processPending());
+            System.out.println();
         }
         finally
         {

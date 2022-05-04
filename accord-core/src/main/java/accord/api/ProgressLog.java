@@ -31,13 +31,6 @@ import accord.txn.TxnId;
  *    If this is not followed closely by {@link #executed}, {@link accord.coordinate.MaybeRecover} should be invoked.
  *
  *  - Finally, it is up to each shard to independently coordinate disseminating the write to every replica.
- *
- * Alternatively this may be viewed as a state machine with the following states:
- *
- *         NonHomePreAccept, NonHomeSafe, NonHomeWaitingOn,
- *         Uncommitted, Committed,
- *         ReadyToExecute, Executed,
- *         WaitingForExecutedOnAllShards, ExecutedOnAllShards
  */
 public interface ProgressLog
 {

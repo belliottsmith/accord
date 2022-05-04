@@ -6,6 +6,7 @@ import accord.local.Node;
 import accord.messages.CheckStatus.CheckStatusOkFull;
 import accord.messages.CheckStatus.IncludeInfo;
 import accord.topology.Shard;
+import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
 
@@ -17,18 +18,20 @@ import static accord.local.Status.Executed;
  *
  * Updates local command stores based on the obtained information.
  */
-public class CheckOnExecuted extends CheckShardStatus
+public class CheckOnCommitted extends CheckShardStatus
 {
-    CheckOnExecuted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch)
+    final Timestamp blockedAt;
+    CheckOnCommitted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch, Timestamp blockedAt)
     {
         super(node, txnId, txn, homeKey, homeShard, homeEpoch, IncludeInfo.all());
+        this.blockedAt = blockedAt;
     }
 
-    public static CheckOnExecuted checkOnExecuted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch)
+    public static CheckOnCommitted checkOnCommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp blockedAt)
     {
-        CheckOnExecuted checkOnExecuted = new CheckOnExecuted(node, txnId, txn, someKey, someShard, shardEpoch);
-        checkOnExecuted.start();
-        return checkOnExecuted;
+        CheckOnCommitted checkOnCommitted = new CheckOnCommitted(node, txnId, txn, someKey, someShard, shardEpoch, blockedAt);
+        checkOnCommitted.start();
+        return checkOnCommitted;
     }
 
     @Override
@@ -48,25 +51,26 @@ public class CheckOnExecuted extends CheckShardStatus
         try
         {
             CheckStatusOkFull full = (CheckStatusOkFull) max;
+            Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, full.homeKey);
             switch (full.status)
             {
                 default: throw new IllegalStateException();
                 case NotWitnessed:
                 case PreAccepted:
                 case Accepted:
-                    // TODO report exception? should have seen Executed at least
+                    // TODO report exception? should have seen Committed at least
                     break;
                 case Executed:
                 case Applied:
-                    node.forEachLocal(txn.keys, full.executeAt.epoch, full.executeAt.epoch, commandStore -> {
+                    node.forEachLocal(txn.keys, full.executeAt.epoch, blockedAt.epoch, commandStore -> {
                         Command command = commandStore.command(txnId);
-                        command.apply(txn, full.homeKey, full.executeAt, full.deps, full.writes, full.result);
+                        command.apply(txn, full.homeKey, localKey, full.executeAt, full.deps, full.writes, full.result);
                     });
                 case Committed:
                 case ReadyToExecute:
-                    node.forEachLocal(txn.keys, txnId.epoch, txnId.epoch, commandStore -> {
+                    node.forEachLocal(txn.keys, txnId.epoch, blockedAt.epoch, commandStore -> {
                         Command command = commandStore.command(txnId);
-                        command.commit(txn, full.homeKey, full.executeAt, full.deps);
+                        command.commit(txn, full.homeKey, localKey, full.executeAt, full.deps);
                     });
             }
         }

@@ -44,7 +44,8 @@ public class Apply extends TxnRequest
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        node.forEachLocal(scope(), instance -> instance.command(txnId).apply(txn, homeKey, executeAt, deps, writes, result));
+        Key localKey = node.selectLocalKey(executeAt.epoch, txn.keys, homeKey);
+        node.forEachLocal(scope(), instance -> instance.command(txnId).apply(txn, homeKey, localKey, executeAt, deps, writes, result));
         node.reply(replyToNode, replyContext, ApplyOk.INSTANCE);
     }
 

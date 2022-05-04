@@ -75,7 +75,7 @@ public class CommandTest
         Assertions.assertEquals(Status.NotWitnessed, command.status());
         Assertions.assertNull(command.executeAt());
 
-        command.preaccept(txn, KEY);
+        command.preaccept(txn, KEY, KEY);
         Assertions.assertEquals(Status.PreAccepted, command.status());
         Assertions.assertEquals(txnId, command.executeAt());
     }
@@ -97,7 +97,7 @@ public class CommandTest
         setTopologyEpoch(support.local, 2);
         Timestamp expectedTimestamp = new Timestamp(2, 110, 0, ID1);
         support.nextTimestamp.set(expectedTimestamp);
-        commands.process((Consumer<? super CommandStore>) cstore -> command.preaccept(txn, KEY));
+        commands.process((Consumer<? super CommandStore>) cstore -> command.preaccept(txn, KEY, KEY));
         Assertions.assertEquals(Status.PreAccepted, command.status());
         Assertions.assertEquals(expectedTimestamp, command.executeAt());
     }

@@ -61,22 +61,23 @@ public class TopologyUpdate
 
         public void process(Node node)
         {
+            Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, homeKey); // likely to be null, unless flip-flop of ownership
             node.forEachLocal(txn, epoch, commandStore -> {
                 switch (status)
                 {
                     case PreAccepted:
-                        commandStore.command(txnId).preaccept(txn, homeKey);
+                        commandStore.command(txnId).preaccept(txn, homeKey, localKey);
                         break;
                     case Accepted:
-                        commandStore.command(txnId).accept(Ballot.ZERO, txn, homeKey, executeAt, deps);
+                        commandStore.command(txnId).accept(Ballot.ZERO, txn, homeKey, localKey, executeAt, deps);
                         break;
                     case Committed:
                     case ReadyToExecute:
-                        commandStore.command(txnId).commit(txn, homeKey, executeAt, deps);
+                        commandStore.command(txnId).commit(txn, homeKey, localKey, executeAt, deps);
                         break;
                     case Executed:
                     case Applied:
-                        commandStore.command(txnId).apply(txn, homeKey, executeAt, deps, writes, result);
+                        commandStore.command(txnId).apply(txn, homeKey, localKey, executeAt, deps, writes, result);
                         break;
                     default:
                         throw new IllegalStateException();

@@ -3,6 +3,7 @@ package accord.messages;
 import accord.api.Key;
 import accord.local.Node;
 import accord.local.Node.Id;
+import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.TxnId;
 
@@ -24,7 +25,7 @@ public class InformOfPersistence implements Request
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        Reply reply = node.ifLocal(homeKey, executeAt.epoch, instance -> {
+        Reply reply = node.ifLocal(homeKey, txnId.epoch, instance -> {
             instance.command(txnId).setGloballyPersistent(homeKey, executeAt);
             instance.progressLog().executedOnAllShards(txnId);
             return ok();

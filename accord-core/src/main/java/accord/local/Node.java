@@ -374,6 +374,26 @@ public class Node implements ConfigurationService.Listener
         return key != null ? key : selectRandomHomeKey(txnId);
     }
 
+    public Key selectLocalKey(long epoch, Keys keys, Key homeKey)
+    {
+        Key localKey = trySelectLocalKey(epoch, keys, homeKey);
+        if (localKey == null)
+            throw new IllegalStateException();
+        return localKey;
+    }
+
+    public Key trySelectLocalKey(long epoch, Keys keys, Key homeKey)
+    {
+        Topology topology = this.topology.localForEpoch(epoch);
+        if (topology.ranges().contains(homeKey))
+            return homeKey;
+
+        int i = topology.ranges().findFirstIntersecting(keys);
+        if (i < 0)
+            return null;
+        return keys.get(i);
+    }
+
     public Key selectRandomHomeKey(TxnId txnId)
     {
         KeyRanges ranges = topology().localForEpoch(txnId.epoch).ranges();

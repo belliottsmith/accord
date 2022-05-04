@@ -37,14 +37,15 @@ public class Accept extends TxnRequest
         this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, homeKey, executeAt, deps);
     }
 
-    public void process(Node on, Node.Id replyToNode, ReplyContext replyContext)
+    public void process(Node node, Node.Id replyToNode, ReplyContext replyContext)
     {
+        Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, homeKey);
         // TODO: when we begin expunging old epochs we need to ensure we handle the case where we do not fully handle the keys;
         //       since this will likely imply the transaction has been applied or aborted we can indicate the coordinator
         //       should enquire as to the result
-        on.reply(replyToNode, replyContext, on.mapReduceLocal(scope(), instance -> {
+        node.reply(replyToNode, replyContext, node.mapReduceLocal(scope(), instance -> {
             Command command = instance.command(txnId);
-            if (!command.accept(ballot, txn, homeKey, executeAt, deps))
+            if (!command.accept(ballot, txn, homeKey, localKey, executeAt, deps))
                 return new AcceptNack(txnId, command.promised());
             return new AcceptOk(txnId, calculateDeps(instance, txnId, txn, executeAt));
         }, (r1, r2) -> {

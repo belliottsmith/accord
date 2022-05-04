@@ -51,10 +51,11 @@ public class BeginRecovery extends TxnRequest
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
+        Key localKey = node.selectLocalKey(txnId.epoch, txn.keys, homeKey);
         RecoverReply reply = node.mapReduceLocal(scope(), instance -> {
             Command command = instance.command(txnId);
 
-            if (!command.recover(txn, homeKey, ballot))
+            if (!command.recover(txn, homeKey, localKey, ballot))
                 return new RecoverNack(command.promised());
 
             Dependencies deps = command.status() == PreAccepted ? calculateDeps(instance, txnId, txn, txnId)

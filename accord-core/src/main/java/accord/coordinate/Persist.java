@@ -9,8 +9,11 @@ import accord.messages.Apply;
 import accord.messages.Apply.ApplyOk;
 import accord.messages.Callback;
 import accord.messages.InformOfPersistence;
+import accord.topology.Shard;
 import accord.topology.Topologies;
+import accord.topology.Topology;
 import accord.txn.Dependencies;
+import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
@@ -49,8 +52,8 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
         if (tracker.success(from) && !isDone())
         {
             // TODO: send to non-home replicas also, so they may clear their log more easily?
-            // TODO (now): decide if we send to all home replicas across all epochs, or just original epoch or latest?
-            node.send(tracker.topologies().current().forKey(homeKey), new InformOfPersistence(txnId, homeKey, executeAt));
+            Shard homeShard = node.topology().forEpochIfKnown(homeKey, txnId.epoch);
+            node.send(homeShard, new InformOfPersistence(txnId, homeKey, executeAt));
             trySuccess(null);
         }
     }

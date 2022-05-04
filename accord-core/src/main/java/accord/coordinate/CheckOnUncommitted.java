@@ -67,7 +67,6 @@ public class CheckOnUncommitted extends CheckShardStatus
             CheckStatusOkFull full = (CheckStatusOkFull) max;
             long minEpoch = txnId.epoch;
             long maxEpoch = (maxExecuteAtWithTxnAsDependency == null ? txnId : maxExecuteAtWithTxnAsDependency).epoch;
-//            long maxEpoch = txnId.epoch;
             node.forEachLocal(txn.keys, minEpoch, maxEpoch, commandStore -> {
                 Command command = commandStore.command(txnId);
                 switch (full.status)
@@ -85,11 +84,13 @@ public class CheckOnUncommitted extends CheckShardStatus
                     case Accepted:
                         command.homeKey(full.homeKey);
                         break;
-                    case Committed:
-                    case ReadyToExecute:
                     case Executed:
                     case Applied:
-                        command.commit(txn, full.homeKey, full.executeAt, full.deps);
+                        // TODO (now): should we merge with CheckOnCommitted and just apply here if the local node accepts it?
+                    case Committed:
+                    case ReadyToExecute:
+                        Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, full.homeKey);
+                        command.commit(txn, full.homeKey, localKey, full.executeAt, full.deps);
                         break;
                 }
             });
