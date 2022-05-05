@@ -113,7 +113,7 @@ public class Command implements Listener, Consumer<Listener>
     public void setGloballyPersistent(Key homeKey, Timestamp executeAt)
     {
         homeKey(homeKey);
-        if (!is(Committed))
+        if (!hasBeen(Committed))
             this.executeAt = executeAt;
         else if (!this.executeAt.equals(executeAt))
             commandStore.agent().onInconsistentTimestamp(this, this.executeAt, executeAt);
@@ -155,8 +155,8 @@ public class Command implements Listener, Consumer<Listener>
             return true;
 
         witness(txn, homeKey, progressKey);
-        if (progressKey != null && handles(txnId.epoch, progressKey))
-            commandStore.progressLog().preaccept(txnId, progressKey.equals(homeKey));
+        boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+        commandStore.progressLog().preaccept(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
 
         listeners.forEach(this);
         return true;
@@ -176,8 +176,8 @@ public class Command implements Listener, Consumer<Listener>
         promised = accepted = ballot;
         status = Accepted;
 
-        if (progressKey != null && handles(txnId.epoch, progressKey))
-            commandStore.progressLog().accept(txnId, progressKey.equals(homeKey));
+        boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+        commandStore.progressLog().accept(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
 
         listeners.forEach(this);
         return true;
@@ -241,8 +241,8 @@ public class Command implements Listener, Consumer<Listener>
 
         // TODO: we might not be the homeShard for later phases if we are no longer replicas of the range at executeAt;
         //       this should be fine, but it might be helpful to provide this info to the progressLog here?
-        if (progressKey != null && handles(txnId.epoch, progressKey))
-            commandStore.progressLog().commit(txnId, progressKey.equals(homeKey));
+        boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+        commandStore.progressLog().commit(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
 
         maybeExecute(false);
         listeners.forEach(this);
@@ -263,9 +263,8 @@ public class Command implements Listener, Consumer<Listener>
         this.result = result;
         this.status = Executed;
 
-
-        if (progressKey != null && handles(txnId.epoch, progressKey))
-            this.commandStore.progressLog().executed(txnId, progressKey.equals(homeKey));
+        boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+        commandStore.progressLog().execute(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
 
         maybeExecute(false);
         this.listeners.forEach(this);
@@ -279,8 +278,8 @@ public class Command implements Listener, Consumer<Listener>
 
         witness(txn, homeKey, progressKey);
         this.promised = ballot;
-        if (progressKey != null && handles(txnId.epoch, progressKey))
-            commandStore.progressLog().preaccept(txnId, progressKey.equals(homeKey));
+        boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+        commandStore.progressLog().preaccept(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
         return true;
     }
 
@@ -351,8 +350,8 @@ public class Command implements Listener, Consumer<Listener>
             case Committed:
                 // TODO: maintain distinct ReadyToRead and ReadyToWrite states
                 status = ReadyToExecute;
-                if (progressKey != null && handles(txnId.epoch, progressKey))
-                    commandStore.progressLog().readyToExecute(txnId, progressKey.equals(homeKey));
+                boolean isProgressShard = progressKey != null && handles(txnId.epoch, progressKey);
+                commandStore.progressLog().readyToExecute(txnId, isProgressShard, isProgressShard && progressKey.equals(homeKey));
                 if (notifyListeners)
                     listeners.forEach(this);
                 break;
@@ -450,10 +449,11 @@ public class Command implements Listener, Consumer<Listener>
         else if (!this.progressKey.equals(progressKey)) throw new AssertionError();
     }
 
+    // does this specific Command instance execute (i.e. does it lose ownership post Commit)
     public boolean executes()
     {
         KeyRanges ranges = commandStore.ranges().at(executeAt.epoch);
-        return ranges != null && ranges.intersects(txn.keys);
+        return ranges != null && txn.keys.any(ranges, commandStore::hashIntersects);
     }
 
     public void txn(Txn txn)

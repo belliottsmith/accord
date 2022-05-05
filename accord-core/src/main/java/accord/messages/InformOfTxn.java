@@ -25,7 +25,7 @@ public class InformOfTxn implements EpochRequest
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         Key progressKey = node.selectProgressKey(txnId, txn.keys, homeKey);
-        Reply reply = node.ifLocal(homeKey, txnId.epoch, instance -> {
+        Reply reply = node.ifLocal(homeKey, txnId, instance -> {
             instance.command(txnId).preaccept(txn, homeKey, progressKey);
             return ok();
         });

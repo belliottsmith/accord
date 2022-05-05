@@ -22,7 +22,7 @@ import static accord.messages.CheckStatus.IncludeInfo.HomeKey;
  *
  * Updates local command stores based on the obtained information.
  */
-public class CheckOnUncommitted extends CheckShardStatus
+public class CheckOnUncommitted extends CheckOnCommitted
 {
     // the maximum execution timestamp of a transaction that has been committed with this as a dependency
     // if we receive a quorum of responses in the home shard that have not witnessed the transaction, then we know
@@ -30,20 +30,15 @@ public class CheckOnUncommitted extends CheckShardStatus
     @Nullable final Timestamp maxExecuteAtWithTxnAsDependency;
 
     CheckOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch,
-                       @Nullable Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
+                       @Nullable Timestamp maxExecuteAtWithTxnAsDependency)
     {
-        super(node, txnId, txn, someKey, someShard, shardEpoch, includeInfo);
+        super(node, txnId, txn, someKey, someShard, shardEpoch);
         this.maxExecuteAtWithTxnAsDependency = maxExecuteAtWithTxnAsDependency;
     }
 
     public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp maxExecuteAtWithTxnAsDependency)
     {
-        return checkOnUncommitted(node, txnId, txn, someKey, someShard, shardEpoch, maxExecuteAtWithTxnAsDependency, (byte)0);
-    }
-
-    public static CheckOnUncommitted checkOnUncommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp maxExecuteAtWithTxnAsDependency, byte includeInfo)
-    {
-        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, someKey, someShard, shardEpoch, maxExecuteAtWithTxnAsDependency, (byte) (includeInfo | HomeKey.and(Dependencies.and(ExecuteAt))));
+        CheckOnUncommitted checkOnUncommitted = new CheckOnUncommitted(node, txnId, txn, someKey, someShard, shardEpoch, maxExecuteAtWithTxnAsDependency);
         checkOnUncommitted.start();
         return checkOnUncommitted;
     }
@@ -60,46 +55,34 @@ public class CheckOnUncommitted extends CheckShardStatus
     }
 
     @Override
-    void onSuccessCriteriaOrExhaustion()
+    void onSuccessCriteriaOrExhaustion(CheckStatusOkFull full)
     {
-        try
+        switch (full.status)
         {
-            CheckStatusOkFull full = (CheckStatusOkFull) max;
-            long minEpoch = txnId.epoch;
-            long maxEpoch = (maxExecuteAtWithTxnAsDependency == null ? txnId : maxExecuteAtWithTxnAsDependency).epoch;
-            node.forEachLocal(txn.keys, minEpoch, maxEpoch, commandStore -> {
-                Command command = commandStore.command(txnId);
-                switch (full.status)
+            default: throw new IllegalStateException();
+            case NotWitnessed:
+                if (maxExecuteAtWithTxnAsDependency != null)
                 {
-                    default: throw new AssertionError();
-                    case NotWitnessed:
-                        // TODO (now): the home shard might be out of date here and might not have been contacted
-                        //             since we don't guarantee talking to the earlier shards. either make sure we contact
-                        //             them, or else
-                        // if not witnessed by a quorum of the home shard
-                        if (maxExecuteAtWithTxnAsDependency != null)
+                    node.forEachLocalSince(txn.keys, txnId.epoch, commandStore -> {
+                        Command command = commandStore.ifPresent(txnId);
+                        if (command != null)
                             command.mustExecuteAfter(maxExecuteAtWithTxnAsDependency);
-                        break;
-                    case PreAccepted:
-                    case Accepted:
-                        command.homeKey(full.homeKey);
-                        break;
-                    case Executed:
-                    case Applied:
-                        // TODO (now): should we merge with CheckOnCommitted and just apply here if the local node accepts it?
-                    case Committed:
-                    case ReadyToExecute:
-                        Key progressKey = node.trySelectProgressKey(txnId, txn.keys, full.homeKey);
-                        command.commit(txn, full.homeKey, progressKey, full.executeAt, full.deps);
-                        break;
+                    });
                 }
-            });
+                break;
+            case PreAccepted:
+            case Accepted:
+                node.forEachLocalSince(txn.keys, txnId.epoch, commandStore -> {
+                    Command command = commandStore.ifPresent(txnId);
+                    if (command != null)
+                        command.homeKey(full.homeKey);
+                });
+                break;
+            case Executed:
+            case Applied:
+            case Committed:
+            case ReadyToExecute:
+                super.onSuccessCriteriaOrExhaustion(full);
         }
-        catch (Throwable t)
-        {
-            complete(max);
-            throw t;
-        }
-        complete(max);
     }
 }

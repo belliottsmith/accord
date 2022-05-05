@@ -78,7 +78,7 @@ public class WaitOnCommit extends TxnRequest
 
         synchronized void setup(Keys keys)
         {
-            List<CommandStore> instances = node.collectLocal(keys, txnId.epoch, ArrayList::new);
+            List<CommandStore> instances = node.collectLocal(keys, txnId, ArrayList::new);
             waitingOn.set(instances.size());
             instances.forEach(instance -> instance.processBlocking(this::setup));
         }

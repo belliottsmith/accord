@@ -1,8 +1,11 @@
 package accord.api;
 
+import java.util.Set;
+
 import accord.coordinate.CheckOnUncommitted;
 import accord.coordinate.InformHomeOfTxn;
 import accord.local.CommandStore;
+import accord.local.Node.Id;
 import accord.txn.TxnId;
 
 /**
@@ -28,7 +31,7 @@ import accord.txn.TxnId;
  *    be invoked.
  *
  *  - Members of the home shard will later be informed that the transaction is {@link #readyToExecute}.
- *    If this is not followed closely by {@link #executed}, {@link accord.coordinate.MaybeRecover} should be invoked.
+ *    If this is not followed closely by {@link #execute}, {@link accord.coordinate.MaybeRecover} should be invoked.
  *
  *  - Finally, it is up to each shard to independently coordinate disseminating the write to every replica.
  */
@@ -46,7 +49,7 @@ public interface ProgressLog
      * A non-home shard should begin monitoring this transaction only to ensure it reaches the Accept phase, or is
      * witnessed by a majority of the home shard.
      */
-    void preaccept(TxnId txnId, boolean isHomeShard);
+    void preaccept(TxnId txnId, boolean isProgressShard, boolean isHomeShard);
 
     /**
      * Has been accepted
@@ -54,7 +57,7 @@ public interface ProgressLog
      * A home shard should monitor this transaction for global progress.
      * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void accept(TxnId txnId, boolean isHomeShard);
+    void accept(TxnId txnId, boolean isProgressShard, boolean isHomeShard);
 
     /**
      * Has committed
@@ -62,7 +65,7 @@ public interface ProgressLog
      * A home shard should monitor this transaction for global progress.
      * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void commit(TxnId txnId, boolean isHomeShard);
+    void commit(TxnId txnId, boolean isProgressShard, boolean isHomeShard);
 
     /**
      * The transaction is waiting to make progress, as all local dependencies have applied.
@@ -70,7 +73,7 @@ public interface ProgressLog
      * A home shard should monitor this transaction for global progress.
      * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void readyToExecute(TxnId txnId, boolean isHomeShard);
+    void readyToExecute(TxnId txnId, boolean isProgressShard, boolean isHomeShard);
 
     /**
      * The transaction's outcome has been durably recorded (but not necessarily applied) locally.
@@ -81,7 +84,7 @@ public interface ProgressLog
      *
      * May also permit aborting a pending waitingOn-triggered event.
      */
-    void executed(TxnId txnId, boolean isHomeShard);
+    void execute(TxnId txnId, boolean isProgressShard, boolean isHomeShard);
 
     /**
      * The transaction's outcome has been durably recorded (but not necessarily applied) at a quorum of all shards.
@@ -91,7 +94,7 @@ public interface ProgressLog
      *
      * Otherwise, this transaction no longer needs to be monitored by either home or non-home shards.
      */
-    void executedOnAllShards(TxnId txnId);
+    void executedOnAllShards(TxnId txnId, Set<Id> persistedOn);
 
     /**
      * The parameter is a command that some other command's execution is most proximally blocked by.

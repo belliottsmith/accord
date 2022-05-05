@@ -52,7 +52,7 @@ public class BeginRecovery extends TxnRequest
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         Key progressKey = node.selectProgressKey(txnId, txn.keys, homeKey);
-        RecoverReply reply = node.mapReduceLocal(scope(), instance -> {
+        RecoverReply reply = node.mapReduceLocal(scope().keys(), txnId.epoch, txnId.epoch, instance -> {
             Command command = instance.command(txnId);
 
             if (!command.recover(txn, homeKey, progressKey, ballot))

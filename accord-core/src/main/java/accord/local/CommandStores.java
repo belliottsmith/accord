@@ -42,7 +42,7 @@ public abstract class CommandStores
 
     interface Select<Scope>
     {
-        long select(ShardedRanges ranges, Scope scope);
+        long select(ShardedRanges ranges, Scope scope, long minEpoch, long maxEpoch);
     }
 
     static class KeysAndEpoch
@@ -178,43 +178,28 @@ public abstract class CommandStores
             return -1L >>> (64 - shards.length);
         }
 
-        long shards(TxnRequest.Scope scope)
-        {
-            return shards(scope.keys(), scope.minEpoch(), scope.maxEpoch());
-        }
-
-        long shards(KeysAndEpochRange scope)
-        {
-            return shards(scope.keys, scope.minEpoch, scope.maxEpoch);
-        }
-
         long shards(Keys keys, long minEpoch, long maxEpoch)
         {
             long accumulate = 0L;
             // TODO (now): it should be safe to only evaluate in the two precise epochs that are relevant, but confirm
-            for (int i = Math.max(0, indexForEpoch(minEpoch)), maxi = indexForEpoch(maxEpoch);
-                 i <= maxi ; ++i)
+            for (int i = Math.max(0, indexForEpoch(minEpoch)), maxi = indexForEpoch(maxEpoch); i <= maxi ; ++i)
             {
                 accumulate = keys.foldl(ranges[i], ShardedRanges::addKeyIndex, shards.length, accumulate, -1L);
             }
             return accumulate;
         }
 
-        long shards(KeysAndEpoch scope)
+        long shard(Key scope, long minEpoch, long maxEpoch)
         {
-            KeyRanges ranges = rangesForEpoch(scope.epoch);
-            if (ranges == null)
-                return 0L;
-            return scope.keys.foldl(ranges, ShardedRanges::addKeyIndex, shards.length, 0L, -1L);
-        }
-
-        long shard(KeyAndEpoch scope)
-        {
-            KeyRanges ranges = rangesForEpoch(scope.epoch);
-            if (ranges == null)
-                return 0L;
-            int index = ranges.rangeIndexForKey(scope.key);
-            return index < 0 ? 0L : addKeyIndex(scope.key, shards.length, 0L);
+            long result = 0L;
+            for (int i = Math.max(0, indexForEpoch(minEpoch)), maxi = indexForEpoch(maxEpoch); i <= maxi ; ++i)
+            {
+                int index = ranges[i].rangeIndexForKey(scope);
+                if (index < 0)
+                    continue;
+                result = addKeyIndex(scope, shards.length, result);
+            }
+            return result;
         }
 
         KeyRanges currentRanges()
@@ -349,47 +334,52 @@ public abstract class CommandStores
                 commandStore.shutdown();
     }
 
-    protected abstract <S> void forEach(Select<S> select, S scope, Consumer<? super CommandStore> forEach);
-    protected abstract <S, T> T mapReduce(Select<S> select, S scope, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce);
+    protected abstract <S> void forEach(Select<S> select, S scope, long minEpoch, long maxEpoch, Consumer<? super CommandStore> forEach);
+    protected abstract <S, T> T mapReduce(Select<S> select, S scope, long minEpoch, long maxEpoch, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce);
 
     public void forEach(Consumer<CommandStore> forEach)
     {
-        forEach((s, i) -> s.all(), null, forEach);
+        forEach((s, i, min, max) -> s.all(), null, 0, 0, forEach);
     }
 
     public void forEach(Keys keys, long epoch, Consumer<CommandStore> forEach)
     {
-        forEach(ShardedRanges::shards, new KeysAndEpoch(keys, epoch), forEach);
+        forEach(keys, epoch, epoch, forEach);
     }
 
     public void forEach(Keys keys, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
     {
-        forEach(ShardedRanges::shards, new KeysAndEpochRange(keys, minEpoch, maxEpoch), forEach);
+        forEach(ShardedRanges::shards, keys, minEpoch, maxEpoch, forEach);
     }
 
-    public void forEach(TxnRequest.Scope scope, Consumer<CommandStore> forEach)
+    public void forEach(TxnRequest.Scope scope, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
     {
-        forEach(ShardedRanges::shards, scope, forEach);
+        forEach(scope.keys(), minEpoch, maxEpoch, forEach);
     }
 
-    public <T> T mapReduce(TxnRequest.Scope scope, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    public <T> T mapReduce(Keys keys, long epoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
     {
-        return mapReduce(ShardedRanges::shards, scope, map, reduce);
+        return mapReduce(keys, epoch, epoch, map, reduce);
+    }
+
+    public <T> T mapReduce(Keys keys, long minEpoch, long maxEpoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    {
+        return mapReduce(ShardedRanges::shards, keys, minEpoch, maxEpoch, map, reduce);
     }
 
     public <T> T mapReduce(Key key, long epoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
     {
-        return mapReduce(ShardedRanges::shard, new KeyAndEpoch(key, epoch), map, reduce);
+        return mapReduce(ShardedRanges::shard, key, epoch, epoch, map, reduce);
     }
 
     public <T extends Collection<CommandStore>> T collect(Keys keys, long epoch, IntFunction<T> factory)
     {
-        return foldl(ShardedRanges::shards, new KeysAndEpoch(keys, epoch), CommandStores::append, null, null, factory);
+        return foldl(ShardedRanges::shards, keys, epoch, epoch, CommandStores::append, null, null, factory);
     }
 
-    public <T extends Collection<CommandStore>> T collect(TxnRequest.Scope scope, IntFunction<T> factory)
+    public <T extends Collection<CommandStore>> T collect(Keys keys, long minEpoch, long maxEpoch, IntFunction<T> factory)
     {
-        return foldl(ShardedRanges::shards, scope, CommandStores::append, null, null, factory);
+        return foldl(ShardedRanges::shards, keys, minEpoch, maxEpoch, CommandStores::append, null, null, factory);
     }
 
     public synchronized void updateTopology(Topology newTopology)
@@ -433,14 +423,14 @@ public abstract class CommandStores
         return accumulator;
     }
 
-    <S, I1, I2, O> O foldl(Select<S> select, S scope, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, IntFunction<? extends O> factory)
+    <S, I1, I2, O> O foldl(Select<S> select, S scope, long minEpoch, long maxEpoch, Fold<? super I1, ? super I2, O> fold, I1 param1, I2 param2, IntFunction<? extends O> factory)
     {
         ShardedRanges[] ranges = current.ranges;
         O accumulator = null;
         int startGroup = 0;
         while (startGroup < ranges.length)
         {
-            long bits = select.select(ranges[startGroup], scope);
+            long bits = select.select(ranges[startGroup], scope, minEpoch, maxEpoch);
             if (bits == 0)
             {
                 ++startGroup;
@@ -455,7 +445,7 @@ public abstract class CommandStores
                 if (offset + group.shards.length > 64)
                     break;
 
-                bits += select.select(group, scope) << offset;
+                bits += select.select(group, scope, minEpoch, maxEpoch) << offset;
                 offset += group.shards.length;
                 ++endGroup;
             }
@@ -501,15 +491,15 @@ public abstract class CommandStores
         }
 
         @Override
-        protected <S, T> T mapReduce(Select<S> select, S scope, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce)
+        protected <S, T> T mapReduce(Select<S> select, S scope, long minEpoch, long maxEpoch, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce)
         {
-            return foldl(select, scope, (store, f, r, t) -> t == null ? f.apply(store) : r.apply(t, f.apply(store)), map, reduce, ignore -> null);
+            return foldl(select, scope, minEpoch, maxEpoch, (store, f, r, t) -> t == null ? f.apply(store) : r.apply(t, f.apply(store)), map, reduce, ignore -> null);
         }
 
         @Override
-        protected <S> void forEach(Select<S> select, S scope, Consumer<? super CommandStore> forEach)
+        protected <S> void forEach(Select<S> select, S scope, long minEpoch, long maxEpoch, Consumer<? super CommandStore> forEach)
         {
-            foldl(select, scope, (store, f, r, t) -> { f.accept(store); return null; }, forEach, null, ignore -> FALSE);
+            foldl(select, scope, minEpoch, maxEpoch, (store, f, r, t) -> { f.accept(store); return null; }, forEach, null, ignore -> FALSE);
         }
     }
 
@@ -525,9 +515,9 @@ public abstract class CommandStores
             super(num, node, agent, store, progressLogFactory, shardFactory);
         }
 
-        private <S, F, T> T mapReduce(Select<S> select, S scope, F f, Fold<F, ?, List<Future<T>>> fold, BiFunction<T, T, T> reduce)
+        private <S, F, T> T mapReduce(Select<S> select, S scope, long minEpoch, long maxEpoch, F f, Fold<F, ?, List<Future<T>>> fold, BiFunction<T, T, T> reduce)
         {
-            List<Future<T>> futures = foldl(select, scope, fold, f, null, ArrayList::new);
+            List<Future<T>> futures = foldl(select, scope, minEpoch, maxEpoch, fold, f, null, ArrayList::new);
             T result = null;
             for (Future<T> future : futures)
             {
@@ -550,14 +540,14 @@ public abstract class CommandStores
         }
 
         @Override
-        protected <S, T> T mapReduce(Select<S> select, S scope, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce)
+        protected <S, T> T mapReduce(Select<S> select, S scope, long minEpoch, long maxEpoch, Function<? super CommandStore, T> map, BiFunction<T, T, T> reduce)
         {
-            return mapReduce(select, scope, map, (store, f, i, t) -> { t.add(store.process(f)); return t; }, reduce);
+            return mapReduce(select, scope, minEpoch, maxEpoch, map, (store, f, i, t) -> { t.add(store.process(f)); return t; }, reduce);
         }
 
-        protected <S> void forEach(Select<S> select, S scope, Consumer<? super CommandStore> forEach)
+        protected <S> void forEach(Select<S> select, S scope, long minEpoch, long maxEpoch, Consumer<? super CommandStore> forEach)
         {
-            mapReduce(select, scope, forEach, (store, f, i, t) -> { t.add(store.process(f)); return t; }, (Void i1, Void i2) -> null);
+            mapReduce(select, scope, minEpoch, maxEpoch, forEach, (store, f, i, t) -> { t.add(store.process(f)); return t; }, (Void i1, Void i2) -> null);
         }
     }
 

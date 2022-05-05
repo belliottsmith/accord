@@ -1,5 +1,10 @@
 package accord.coordinate;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Set;
+
 import accord.api.Key;
 import accord.api.Result;
 import accord.coordinate.tracking.QuorumTracker;
@@ -11,9 +16,7 @@ import accord.messages.Callback;
 import accord.messages.InformOfPersistence;
 import accord.topology.Shard;
 import accord.topology.Topologies;
-import accord.topology.Topology;
 import accord.txn.Dependencies;
-import accord.txn.Keys;
 import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
@@ -29,6 +32,7 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
     final Timestamp executeAt;
     final QuorumTracker tracker;
     Throwable failure;
+    final Set<Id> persistedOn;
 
     public static AsyncFuture<Void> persist(Node node, Topologies topologies, TxnId txnId, Key homeKey, Txn txn, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
     {
@@ -44,16 +48,18 @@ public class Persist extends AsyncFuture<Void> implements Callback<ApplyOk>
         this.homeKey = homeKey;
         this.tracker = new QuorumTracker(topologies);
         this.executeAt = executeAt;
+        this.persistedOn = new HashSet<>();
     }
 
     @Override
     public void onSuccess(Id from, ApplyOk response)
     {
+        persistedOn.add(from);
         if (tracker.success(from) && !isDone())
         {
             // TODO: send to non-home replicas also, so they may clear their log more easily?
             Shard homeShard = node.topology().forEpochIfKnown(homeKey, txnId.epoch);
-            node.send(homeShard, new InformOfPersistence(txnId, homeKey, executeAt));
+            node.send(homeShard, new InformOfPersistence(txnId, homeKey, executeAt, persistedOn));
             trySuccess(null);
         }
     }

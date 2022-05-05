@@ -39,11 +39,11 @@ public class Accept extends TxnRequest
 
     public void process(Node node, Node.Id replyToNode, ReplyContext replyContext)
     {
-        Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
+        Key progressKey = node.trySelectProgressKey(waitForEpoch(), txn.keys, homeKey);
         // TODO: when we begin expunging old epochs we need to ensure we handle the case where we do not fully handle the keys;
         //       since this will likely imply the transaction has been applied or aborted we can indicate the coordinator
         //       should enquire as to the result
-        node.reply(replyToNode, replyContext, node.mapReduceLocal(scope(), instance -> {
+        node.reply(replyToNode, replyContext, node.mapReduceLocal(scope().keys(), scope().minEpoch(), executeAt.epoch, instance -> {
             Command command = instance.command(txnId);
             if (!command.accept(ballot, txn, homeKey, progressKey, executeAt, deps))
                 return new AcceptNack(txnId, command.promised());

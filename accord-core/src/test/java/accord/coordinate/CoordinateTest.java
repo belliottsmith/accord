@@ -1,8 +1,5 @@
 package accord.coordinate;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
 import accord.local.Node;
 import accord.impl.mock.MockCluster;
 import accord.api.Result;

@@ -2,7 +2,6 @@ package accord.coordinate;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import com.google.common.base.Preconditions;
 
@@ -17,12 +16,13 @@ import accord.messages.CheckStatus.CheckStatusReply;
 import accord.topology.Shard;
 import accord.txn.Txn;
 import accord.txn.TxnId;
+import org.apache.cassandra.utils.concurrent.AsyncFuture;
 
 /**
  * A result of null indicates the transaction is globally persistent
  * A result of CheckStatusOk indicates the maximum status found for the transaction, which may be used to assess progress
  */
-public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> implements Callback<CheckStatusReply>
+public abstract class CheckShardStatus extends AsyncFuture<CheckStatusOk> implements Callback<CheckStatusReply>
 {
     static class Tracker extends ReadShardTracker
     {
@@ -111,7 +111,7 @@ public abstract class CheckShardStatus extends CompletableFuture<CheckStatusOk> 
         if (tracker.recordReadFailure(from))
         {
             if (tracker.hasFailed())
-                completeExceptionally(failure);
+                tryFailure(failure);
             else if (!tracker.hasInFlight() && hasMoreCandidates())
                 sendMore();
             else

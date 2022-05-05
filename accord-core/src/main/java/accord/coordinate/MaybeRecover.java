@@ -1,6 +1,5 @@
 package accord.coordinate;
 
-import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
 
 import accord.api.Key;
@@ -13,6 +12,7 @@ import accord.topology.Shard;
 import accord.txn.Ballot;
 import accord.txn.Txn;
 import accord.txn.TxnId;
+import org.apache.cassandra.utils.concurrent.Future;
 
 import static accord.local.Status.Accepted;
 
@@ -37,8 +37,8 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
     @Override
     public void accept(Object unused, Throwable fail)
     {
-        if (fail != null) completeExceptionally(fail);
-        else complete(null);
+        if (fail != null) tryFailure(fail);
+        else trySuccess(null);
     }
 
     @Override
@@ -56,13 +56,13 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
     }
 
     // TODO (now): invoke from {node} so we may have mutual exclusion with other attempts to recover or coordinate
-    public static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
-                                                              Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted)
+    public static Future<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
+                                                     Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted)
     {
         return maybeRecover(node, txnId, txn, homeKey, homeShard, homeEpoch, knownStatus, knownPromised, knownPromiseHasBeenAccepted, (byte)0);
     }
 
-    private static CompletionStage<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
+    private static Future<CheckStatusOk> maybeRecover(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch,
                                                                Status knownStatus, Ballot knownPromised, boolean knownPromiseHasBeenAccepted, byte includeInfo)
     {
         MaybeRecover maybeRecover = new MaybeRecover(node, txnId, txn, homeKey, homeShard, homeEpoch, knownStatus, knownPromised, knownPromiseHasBeenAccepted, includeInfo);
@@ -82,7 +82,7 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
             case ReadyToExecute:
                 if (hasMadeProgress())
                 {
-                    complete(max);
+                    trySuccess(max);
                 }
                 else
                 {
@@ -96,7 +96,7 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
                 if (max.hasExecutedOnAllShards)
                 {
                     // TODO: persist this knowledge locally?
-                    complete(null);
+                    trySuccess(null);
                 }
                 else if (max instanceof CheckStatusOkFull)
                 {
@@ -108,12 +108,12 @@ public class MaybeRecover extends CheckShardStatus implements BiConsumer<Object,
                 else
                 {
                     maybeRecover(node, txnId, txn, key, tracker.shard, epoch, max.status, max.promised, max.accepted.equals(max.promised), IncludeInfo.all())
-                    .whenComplete((success, fail) -> {
-                        if (fail != null) completeExceptionally(fail);
+                    .addCallback((success, fail) -> {
+                        if (fail != null) tryFailure(fail);
                         else
                         {
                             assert success == null;
-                            complete(null);
+                            trySuccess(null);
                         }
                     });
                 }

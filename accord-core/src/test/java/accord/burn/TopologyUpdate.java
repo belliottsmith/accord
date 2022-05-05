@@ -62,7 +62,8 @@ public class TopologyUpdate
         public void process(Node node)
         {
             Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey); // likely to be null, unless flip-flop of ownership
-            node.forEachLocal(txn, epoch, commandStore -> {
+            // TODO: can skip the homeKey if it's not a participating key in the transaction
+            node.forEachLocalSince(txn.keys, epoch, commandStore -> {
                 switch (status)
                 {
                     case PreAccepted:

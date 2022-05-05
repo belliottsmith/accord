@@ -58,7 +58,7 @@ public class EpochSync implements Runnable
         public void process(Node node, Node.Id from, ReplyContext replyContext)
         {
             Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-            node.forEachLocal(txn, epoch, commandStore -> {
+            node.forEachLocalSince(txn.keys, epoch, commandStore -> {
                 Command command = commandStore.command(txnId);
                 command.commit(txn, homeKey, progressKey, executeAt, deps);
             });

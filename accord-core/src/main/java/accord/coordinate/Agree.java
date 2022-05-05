@@ -142,7 +142,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
         tracker = new PreacceptTracker(node.topology().syncForKeys(txn.keys(), txnId.epoch, txnId.epoch));
         // TODO: consider sending only to electorate of most recent topology (as only these PreAccept votes matter)
         // note that we must send to all replicas of old topology, as electorate may not be reachable
-        node.send(tracker.nodes(), to -> new PreAccept(to, tracker.topologies(), txnId, txn, homeKey), this);
+        node.send(tracker.nodes(), to -> new PreAccept(to, tracker.topologies(), txnId, txn, homeKey, txnId.epoch), this);
     }
 
     @Override
@@ -178,7 +178,7 @@ class Agree extends Propose implements Callback<PreAcceptReply>
         // send messages to new nodes
         Set<Id> needMessages = Sets.difference(tracker.nodes(), previousNodes);
         if (!needMessages.isEmpty())
-            node.send(needMessages, to -> new PreAccept(to, newTopologies, txnId, txn, homeKey), this);
+            node.send(needMessages, to -> new PreAccept(to, newTopologies, txnId, txn, homeKey, newTopologies.currentEpoch()), this);
 
         if (tracker.shouldSlowPathAccept())
             onPreAccepted();

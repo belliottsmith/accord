@@ -30,8 +30,11 @@ public class Commit extends ReadData
     public void process(Node node, Id from, ReplyContext replyContext)
     {
         Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-        node.forEachLocal(scope(), instance -> instance.command(txnId).commit(txn, homeKey, progressKey, executeAt, deps));
-        if (read) super.process(node, from, replyContext);
+        node.forEachLocal(scope().keys(), txnId.epoch,
+                          instance -> instance.command(txnId).commit(txn, homeKey, progressKey, executeAt, deps));
+
+        if (read)
+            super.process(node, from, replyContext);
     }
 
     @Override

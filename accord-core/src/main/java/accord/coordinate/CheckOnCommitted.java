@@ -6,7 +6,6 @@ import accord.local.Node;
 import accord.messages.CheckStatus.CheckStatusOkFull;
 import accord.messages.CheckStatus.IncludeInfo;
 import accord.topology.Shard;
-import accord.txn.Timestamp;
 import accord.txn.Txn;
 import accord.txn.TxnId;
 
@@ -20,16 +19,14 @@ import static accord.local.Status.Executed;
  */
 public class CheckOnCommitted extends CheckShardStatus
 {
-    final Timestamp blockedAt;
-    CheckOnCommitted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch, Timestamp blockedAt)
+    CheckOnCommitted(Node node, TxnId txnId, Txn txn, Key homeKey, Shard homeShard, long homeEpoch)
     {
         super(node, txnId, txn, homeKey, homeShard, homeEpoch, IncludeInfo.all());
-        this.blockedAt = blockedAt;
     }
 
-    public static CheckOnCommitted checkOnCommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch, Timestamp blockedAt)
+    public static CheckOnCommitted checkOnCommitted(Node node, TxnId txnId, Txn txn, Key someKey, Shard someShard, long shardEpoch)
     {
-        CheckOnCommitted checkOnCommitted = new CheckOnCommitted(node, txnId, txn, someKey, someShard, shardEpoch, blockedAt);
+        CheckOnCommitted checkOnCommitted = new CheckOnCommitted(node, txnId, txn, someKey, someShard, shardEpoch);
         checkOnCommitted.start();
         return checkOnCommitted;
     }
@@ -45,40 +42,48 @@ public class CheckOnCommitted extends CheckShardStatus
         return max != null && max.status.compareTo(Executed) >= 0;
     }
 
+    void onSuccessCriteriaOrExhaustion(CheckStatusOkFull max)
+    {
+        Key progressKey = node.trySelectProgressKey(txnId, txn.keys, max.homeKey);
+        switch (max.status)
+        {
+            default: throw new IllegalStateException();
+            case NotWitnessed:
+            case PreAccepted:
+            case Accepted:
+                break;
+            case Executed:
+            case Applied:
+                node.forEachLocalSince(txn.keys, max.executeAt.epoch, commandStore -> {
+                    Command command = commandStore.command(txnId);
+                    command.apply(txn, max.homeKey, progressKey, max.executeAt, max.deps, max.writes, max.result);
+                });
+                node.forEachLocal(txn.keys, txnId.epoch, max.executeAt.epoch - 1, commandStore -> {
+                    Command command = commandStore.command(txnId);
+                    command.commit(txn, max.homeKey, progressKey, max.executeAt, max.deps);
+                });
+                break;
+            case Committed:
+            case ReadyToExecute:
+                node.forEachLocalSince(txn.keys, txnId.epoch, commandStore -> {
+                    Command command = commandStore.command(txnId);
+                    command.commit(txn, max.homeKey, progressKey, max.executeAt, max.deps);
+                });
+        }
+    }
+
     @Override
     void onSuccessCriteriaOrExhaustion()
     {
         try
         {
-            CheckStatusOkFull full = (CheckStatusOkFull) max;
-            Key progressKey = node.trySelectProgressKey(txnId, txn.keys, full.homeKey);
-            switch (full.status)
-            {
-                default: throw new IllegalStateException();
-                case NotWitnessed:
-                case PreAccepted:
-                case Accepted:
-                    // TODO report exception? should have seen Committed at least
-                    break;
-                case Executed:
-                case Applied:
-                    node.forEachLocal(txn.keys, full.executeAt.epoch, blockedAt.epoch, commandStore -> {
-                        Command command = commandStore.command(txnId);
-                        command.apply(txn, full.homeKey, progressKey, full.executeAt, full.deps, full.writes, full.result);
-                    });
-                case Committed:
-                case ReadyToExecute:
-                    node.forEachLocal(txn.keys, txnId.epoch, blockedAt.epoch, commandStore -> {
-                        Command command = commandStore.command(txnId);
-                        command.commit(txn, full.homeKey, progressKey, full.executeAt, full.deps);
-                    });
-            }
+            onSuccessCriteriaOrExhaustion((CheckStatusOkFull) max);
         }
         catch (Throwable t)
         {
-            complete(max);
+            trySuccess(max);
             throw t;
         }
-        complete(max);
+        trySuccess(max);
     }
 }

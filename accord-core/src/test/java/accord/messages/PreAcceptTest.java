@@ -63,7 +63,7 @@ public class PreAcceptTest
 
     private static PreAccept preAccept(TxnId txnId, Txn txn, Key homeKey)
     {
-        return new PreAccept(scope(txnId, txn), txnId, txn, homeKey);
+        return new PreAccept(scope(txnId, txn), txnId, txn, homeKey, txnId.epoch);
     }
 
     @Test

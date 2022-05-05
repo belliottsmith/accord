@@ -45,7 +45,8 @@ public class Apply extends TxnRequest
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-        node.forEachLocal(scope(), instance -> instance.command(txnId).apply(txn, homeKey, progressKey, executeAt, deps, writes, result));
+        node.forEachLocalSince(scope().keys(), executeAt,
+                               instance -> instance.command(txnId).apply(txn, homeKey, progressKey, executeAt, deps, writes, result));
         node.reply(replyToNode, replyContext, ApplyOk.INSTANCE);
     }
 

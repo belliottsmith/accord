@@ -61,21 +61,29 @@ public abstract class TxnRequest implements EpochRequest
         {
             long waitForEpoch = 0;
             Keys scopeKeys = Keys.EMPTY;
-            Keys lastKeys = null;
+            KeyRanges lastRanges = null;
             for (int i=topologies.size() - 1; i>=0; i--)
             {
                 Topology topology = topologies.get(i);
                 KeyRanges topologyRanges = topology.rangesForNode(node);
+                Keys epochKeys;
                 if (topologyRanges == null)
-                    continue;
-                topologyRanges = topologyRanges.intersection(keys);
-                Keys epochKeys = keys.intersect(topologyRanges);
-                if (lastKeys == null || !lastKeys.equals(epochKeys))
                 {
-                    waitForEpoch = topology.epoch();
-                    scopeKeys = scopeKeys.union(epochKeys);
+                    epochKeys = Keys.EMPTY;
+                    if (lastRanges == null)
+                        continue;
                 }
-                lastKeys = epochKeys;
+                else
+                {
+                    if (topologyRanges.equals(lastRanges))
+                        continue;
+
+                    epochKeys = keys.intersect(topologyRanges);
+                }
+
+                waitForEpoch = topology.epoch();
+                scopeKeys = scopeKeys.union(epochKeys);
+                lastRanges = topologyRanges;
             }
 
             return new Scope(topologies.oldestEpoch(), topologies.currentEpoch(), waitForEpoch, scopeKeys);

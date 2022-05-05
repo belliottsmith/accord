@@ -80,6 +80,11 @@ public abstract class CommandStore
         this.rangesForEpoch = rangesForEpoch;
     }
 
+    public Command ifPresent(TxnId txnId)
+    {
+        return commands.get(txnId);
+    }
+
     public Command command(TxnId txnId)
     {
         return commands.computeIfAbsent(txnId, id -> new Command(this, id));

@@ -6,7 +6,6 @@ import accord.coordinate.tracking.QuorumTracker;
 import accord.local.Node;
 import accord.messages.EpochRequest;
 import accord.messages.Request;
-import accord.messages.TxnRequest;
 import accord.topology.Topologies.Single;
 import accord.txn.Keys;
 import accord.txn.Timestamp;
@@ -199,7 +198,7 @@ public class TopologyManager implements ConfigurationService.Listener
             if (1 + currentEpoch - epoch >= epochs.length)
                 return false;
             int i = (int)(1 + currentEpoch - epoch);
-            return epochs[i].syncCompleteFor(keys);
+            return !epochs[i].syncCompleteFor(keys);
         }
     }
 
@@ -362,7 +361,7 @@ public class TopologyManager implements ConfigurationService.Listener
 
     public Topologies unsyncForTxn(Txn txn, long epoch)
     {
-        return syncForKeys(txn.keys(), epoch, epoch);
+        return unsyncForKeys(txn.keys(), epoch, epoch);
     }
 
     public Topologies unsyncForTxn(Txn txn, long minEpoch, long maxEpoch)

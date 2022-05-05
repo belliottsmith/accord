@@ -213,7 +213,17 @@ class Recover extends Propose implements Callback<RecoverReply>
             executeAt = txnId;
         }
 
-        startAccept(executeAt, deps, node.topology().forTxn(txn, txnId, executeAt));
+        if (!node.topology().hasEpoch(executeAt.epoch))
+        {
+            node.configService().fetchTopologyForEpoch(executeAt.epoch);
+            node.topology().awaitEpoch(executeAt.epoch).addListener(() -> {
+                startAccept(executeAt, deps, node.topology().forTxn(txn, txnId, executeAt));
+            });
+        }
+        else
+        {
+            startAccept(executeAt, deps, node.topology().forTxn(txn, txnId, executeAt));
+        }
     }
 
     private void retry()

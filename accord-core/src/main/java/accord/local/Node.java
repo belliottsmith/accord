@@ -221,19 +221,34 @@ public class Node implements ConfigurationService.Listener
         commandStores.forEach(keys, minEpoch, maxEpoch, forEach);
     }
 
-    public void forEachLocal(Txn txn, long epoch, Consumer<CommandStore> forEach)
+    public void forEachLocalSince(Keys keys, Timestamp since, Consumer<CommandStore> forEach)
     {
-        forEachLocal(txn.keys, epoch, forEach);
+        commandStores.forEach(keys, since.epoch, Long.MAX_VALUE, forEach);
     }
 
-    public void forEachLocal(TxnRequest.Scope scope, Consumer<CommandStore> forEach)
+    public void forEachLocalSince(Keys keys, long sinceEpoch, Consumer<CommandStore> forEach)
     {
-        commandStores.forEach(scope, forEach);
+        commandStores.forEach(keys, sinceEpoch, Long.MAX_VALUE, forEach);
     }
 
-    public <T> T mapReduceLocal(TxnRequest.Scope scope, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    public void forEachLocal(TxnRequest.Scope scope, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
     {
-        return commandStores.mapReduce(scope, map, reduce);
+        commandStores.forEach(scope, minEpoch, maxEpoch, forEach);
+    }
+
+    public <T> T mapReduceLocal(Keys keys, long minEpoch, long maxEpoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    {
+        return commandStores.mapReduce(keys, minEpoch, maxEpoch, map, reduce);
+    }
+
+    public <T> T mapReduceLocalSince(Keys keys, Timestamp since, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
+    {
+        return commandStores.mapReduce(keys, since.epoch, Long.MAX_VALUE, map, reduce);
+    }
+
+    public <T> T ifLocal(Key key, Timestamp at, Function<CommandStore, T> ifLocal)
+    {
+        return ifLocal(key, at.epoch, ifLocal);
     }
 
     public <T> T ifLocal(Key key, long epoch, Function<CommandStore, T> ifLocal)
@@ -241,14 +256,9 @@ public class Node implements ConfigurationService.Listener
         return commandStores.mapReduce(key, epoch, ifLocal, (a, b) -> { throw new IllegalStateException();} );
     }
 
-    public <T extends Collection<CommandStore>> T collectLocal(Keys keys, long epoch, IntFunction<T> factory)
+    public <T extends Collection<CommandStore>> T collectLocal(Keys keys, Timestamp at, IntFunction<T> factory)
     {
-        return commandStores.collect(keys, epoch, factory);
-    }
-
-    public <T extends Collection<CommandStore>> T collectLocal(TxnRequest.Scope scope, IntFunction<T> factory)
-    {
-        return commandStores.collect(scope, factory);
+        return commandStores.collect(keys, at.epoch, factory);
     }
 
     // send to every node besides ourselves
@@ -384,7 +394,12 @@ public class Node implements ConfigurationService.Listener
 
     public Key trySelectProgressKey(TxnId txnId, Keys keys, Key homeKey)
     {
-        Topology topology = this.topology.localForEpoch(txnId.epoch);
+        return trySelectProgressKey(txnId.epoch, keys, homeKey);
+    }
+
+    public Key trySelectProgressKey(long epoch, Keys keys, Key homeKey)
+    {
+        Topology topology = this.topology.localForEpoch(epoch);
         if (topology.ranges().contains(homeKey))
             return homeKey;
 
