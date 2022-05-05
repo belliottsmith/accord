@@ -45,9 +45,9 @@ import static accord.coordinate.InformHomeOfTxn.inform;
 import static accord.coordinate.MaybeRecover.maybeRecover;
 import static accord.impl.SimpleProgressLog.CoordinateApplyAndCheck.applyAndCheck;
 import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.Durable;
-import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.DurableNotWitnessed;
 import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.Disseminating;
 import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.NotExecuted;
+import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.PendingDurable;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.Committed;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.NotWitnessed;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.ReadyToExecute;
@@ -84,6 +84,16 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         }
     }
 
+    static class GlobalPendingDurable
+    {
+        final Set<Id> persistedOn;
+
+        GlobalPendingDurable(Set<Id> persistedOn)
+        {
+            this.persistedOn = persistedOn;
+        }
+    }
+
     static class HomeState
     {
         enum LocalStatus
@@ -93,18 +103,20 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
 
         enum GlobalStatus
         {
-            NotExecuted, Disseminating, DurableNotWitnessed, Durable, Done // TODO: manage propagating from Durable to everyone
+            NotExecuted, Disseminating, PendingDurable, Durable, Done // TODO: manage propagating from Durable to everyone
         }
 
         LocalStatus local = NotWitnessed;
         Progress localProgress = NoneExpected;
-        GlobalStatus global = NotExecuted;
-        Progress globalProgress = NoneExpected;
-        Set<Id> notPersisted;
-
         Status maxStatus;
         Ballot maxPromised;
         boolean maxPromiseHasBeenAccepted;
+
+        GlobalStatus global = NotExecuted;
+        Progress globalProgress = NoneExpected;
+        Set<Id> globalNotPersisted;
+        GlobalPendingDurable globalPendingDurable;
+
 
         void ensureAtLeast(LocalStatus newStatus, Progress newProgress, Node node, Command command)
         {
@@ -151,22 +163,33 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             if (global == NotExecuted)
                 return;
 
-            if (notPersisted == null)
+            if (globalPendingDurable != null)
+            {
+                if (node == null || command == null || command.is(Status.NotWitnessed))
+                    return;
+
+                if (persistedOns == null) persistedOns = globalPendingDurable.persistedOn;
+                else persistedOns.addAll(globalPendingDurable.persistedOn);
+
+                global = Durable;
+                globalProgress = Expected;
+            }
+
+            if (globalNotPersisted == null)
             {
                 assert node != null && command != null;
-                global = global == DurableNotWitnessed ? Durable : Disseminating;
-                globalProgress = Expected;
-                notPersisted = new HashSet<>(node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch).nodes());
-                notPersisted.remove(node.id());
+                globalNotPersisted = new HashSet<>(node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch).nodes());
+                if (local == LocalStatus.Done)
+                    globalNotPersisted.remove(node.id());
             }
-            if (notPersisted != null)
+            if (globalNotPersisted != null)
             {
                 if (persistedOn != null)
-                    notPersisted.remove(persistedOn);
+                    globalNotPersisted.remove(persistedOn);
                 if (persistedOns != null)
-                    notPersisted.removeAll(persistedOns);
+                    globalNotPersisted.removeAll(persistedOns);
 
-                if (notPersisted.isEmpty())
+                if (globalNotPersisted.isEmpty())
                 {
                     global = GlobalStatus.Done;
                     globalProgress = Done;
@@ -178,8 +201,9 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         {
             if (local == NotWitnessed)
             {
-                global = DurableNotWitnessed;
+                global = PendingDurable;
                 globalProgress = NoneExpected;
+                globalPendingDurable = new GlobalPendingDurable(persistedOn);
             }
             else if (global != GlobalStatus.Done)
             {
@@ -659,12 +683,12 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             CoordinateApplyAndCheck coordinate = new CoordinateApplyAndCheck(txnId, command, state);
             // TODO (now): whether we need to send to future shards depends on sync logic
             Topologies topologies = node.topology().unsyncForTxn(command.txn(), command.executeAt().epoch);
-            state.notPersisted.retainAll(topologies.nodes()); // we might have had some nodes from older shards that are now redundant
-            node.send(state.notPersisted, id -> new ApplyAndCheck(id, topologies,
-                                                                  command.txnId(), command.txn(), command.homeKey(),
-                                                                  command.savedDeps(), command.executeAt(),
-                                                                  command.writes(), command.result(),
-                                                                  state.notPersisted),
+            state.globalNotPersisted.retainAll(topologies.nodes()); // we might have had some nodes from older shards that are now redundant
+            node.send(state.globalNotPersisted, id -> new ApplyAndCheck(id, topologies,
+                                                                        command.txnId(), command.txn(), command.homeKey(),
+                                                                        command.savedDeps(), command.executeAt(),
+                                                                        command.writes(), command.result(),
+                                                                        state.globalNotPersisted),
                       coordinate);
             return coordinate;
         }
@@ -674,13 +698,13 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             this.txnId = txnId;
             this.command = command;
             this.state = state;
-            this.waitingOnResponses = new HashSet<>(state.notPersisted);
+            this.waitingOnResponses = new HashSet<>(state.globalNotPersisted);
         }
 
         @Override
         public void onSuccess(Id from, ApplyAndCheckOk response)
         {
-            state.notPersisted.retainAll(response.notPersisted);
+            state.globalNotPersisted.retainAll(response.notPersisted);
             state.refreshGlobal(null, null, null, null);
         }
 
@@ -712,8 +736,8 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                 {
                     SimpleProgressLog.Instance log = ((SimpleProgressLog.Instance)instance.progressLog());
                     State state = log.stateMap.get(txnId);
-                    state.homeState.notPersisted.retainAll(notPersisted);
-                    return new ApplyAndCheckOk(state.homeState.notPersisted);
+                    state.homeState.globalNotPersisted.retainAll(notPersisted);
+                    return new ApplyAndCheckOk(state.homeState.globalNotPersisted);
                 }
                 notPersisted.remove(node.id());
                 return new ApplyAndCheckOk(notPersisted);

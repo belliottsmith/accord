@@ -61,6 +61,13 @@ public class TopologyUpdate
 
         public void process(Node node)
         {
+            if (!node.topology().hasEpoch(txnId.epoch))
+            {
+                node.configService().fetchTopologyForEpoch(txnId.epoch);
+                node.topology().awaitEpoch(txnId.epoch).addListener(() -> process(node));
+                return;
+            }
+
             Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey); // likely to be null, unless flip-flop of ownership
             // TODO: can skip the homeKey if it's not a participating key in the transaction
             node.forEachLocalSince(txn.keys, epoch, commandStore -> {

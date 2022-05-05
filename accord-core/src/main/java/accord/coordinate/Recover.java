@@ -151,15 +151,18 @@ class Recover extends Propose implements Callback<RecoverReply>
     private void recover()
     {
         // first look for the most recent Accept; if present, go straight to proposing it again
-        RecoverOk acceptOrCommit = null;
-        for (RecoverOk ok : recoverOks)
-        {
-            if (ok.status.compareTo(Accepted) >= 0)
+        RecoverOk acceptOrCommit; {
+            RecoverOk tmp = null;
+            for (RecoverOk ok : recoverOks)
             {
-                if (acceptOrCommit == null) acceptOrCommit = ok;
-                else if (acceptOrCommit.status.compareTo(ok.status) < 0) acceptOrCommit = ok;
-                else if (acceptOrCommit.status == ok.status && acceptOrCommit.accepted.compareTo(ok.accepted) < 0) acceptOrCommit = ok;
+                if (ok.status.compareTo(Accepted) >= 0)
+                {
+                    if (tmp == null) tmp = ok;
+                    else if (tmp.status.compareTo(ok.status) < 0) tmp = ok;
+                    else if (tmp.status == ok.status && tmp.accepted.compareTo(ok.accepted) < 0) tmp = ok;
+                }
             }
+            acceptOrCommit = tmp;
         }
 
         if (acceptOrCommit != null)
@@ -167,8 +170,20 @@ class Recover extends Propose implements Callback<RecoverReply>
             switch (acceptOrCommit.status)
             {
                 case Accepted:
-                    Topologies topologies = node.topology().forTxn(txn, txnId.epoch, acceptOrCommit.executeAt.epoch);
-                    startAccept(acceptOrCommit.executeAt, acceptOrCommit.deps, topologies);
+                    // TODO: this pattern needs to be given some efficient syntactic sugar
+                    if (node.topology().hasEpoch(acceptOrCommit.executeAt.epoch))
+                    {
+                        Topologies topologies = node.topology().forTxn(txn, txnId.epoch, acceptOrCommit.executeAt.epoch);
+                        startAccept(acceptOrCommit.executeAt, acceptOrCommit.deps, topologies);
+                    }
+                    else
+                    {
+                        node.configService().fetchTopologyForEpoch(acceptOrCommit.executeAt.epoch);
+                        node.topology().awaitEpoch(acceptOrCommit.executeAt.epoch).addListener(() -> {
+                            Topologies topologies = node.topology().forTxn(txn, txnId.epoch, acceptOrCommit.executeAt.epoch);
+                            startAccept(acceptOrCommit.executeAt, acceptOrCommit.deps, topologies);
+                        });
+                    }
                     return;
                 case Committed:
                 case ReadyToExecute:
