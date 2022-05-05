@@ -11,7 +11,7 @@ import java.util.Objects;
 
 import com.google.common.base.Preconditions;
 
-public abstract class TxnRequest implements Request
+public abstract class TxnRequest implements EpochRequest
 {
     private final Scope scope;
 
@@ -23,6 +23,11 @@ public abstract class TxnRequest implements Request
     public Scope scope()
     {
         return scope;
+    }
+
+    public long waitForEpoch()
+    {
+        return scope().waitForEpoch();
     }
 
     /**

@@ -3,6 +3,7 @@ package accord.local;
 import accord.api.Agent;
 import accord.api.Key;
 import accord.api.DataStore;
+import accord.local.CommandStore.RangesForEpoch;
 import accord.messages.TxnRequest;
 import accord.api.ProgressLog;
 import accord.topology.KeyRanges;
@@ -101,12 +102,12 @@ public abstract class CommandStores
             this.numShards = numShards;
         }
 
-        CommandStore create(int generation, int shardIndex, LongFunction<KeyRanges> rangesForEpoch)
+        CommandStore create(int generation, int shardIndex, RangesForEpoch rangesForEpoch)
         {
             return shardFactory.create(generation, shardIndex, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
         }
 
-        ShardedRanges createShardedRanges(int generation, long epoch, KeyRanges ranges, LongFunction<KeyRanges> rangesForEpoch)
+        ShardedRanges createShardedRanges(int generation, long epoch, KeyRanges ranges, RangesForEpoch rangesForEpoch)
         {
             CommandStore[] newStores = new CommandStore[numShards];
             for (int i=0; i<numShards; i++)
@@ -153,6 +154,16 @@ public abstract class CommandStores
             if (i < 0) i = -2 -i;
             if (i < 0) return null;
             return ranges[i];
+        }
+
+        KeyRanges rangesSinceEpoch(long epoch)
+        {
+            int i = Arrays.binarySearch(epochs, epoch);
+            if (i < 0) i = Math.max(0, -2 -i);
+            KeyRanges result = ranges[i++];
+            while (i < ranges.length)
+                result = ranges[i++].union(result);
+            return result;
         }
 
         int indexForEpoch(long epoch)
@@ -312,9 +323,23 @@ public abstract class CommandStores
         return new Snapshot(result, newTopology, newLocalTopology);
     }
 
-    private LongFunction<KeyRanges> rangesForEpochFunction(int generation)
+    private RangesForEpoch rangesForEpochFunction(int generation)
     {
-        return epoch -> current.ranges[generation].rangesForEpoch(epoch);
+        return new RangesForEpoch()
+        {
+
+            @Override
+            public KeyRanges at(long epoch)
+            {
+                return current.ranges[generation].rangesForEpoch(epoch);
+            }
+
+            @Override
+            public KeyRanges since(long epoch)
+            {
+                return current.ranges[generation].rangesSinceEpoch(epoch);
+            }
+        };
     }
 
     public synchronized void shutdown()

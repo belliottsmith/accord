@@ -81,14 +81,14 @@ public class ReadData extends TxnRequest
             }
         }
 
-        synchronized void setup(TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Scope scope)
+        synchronized void setup(TxnId txnId, Txn txn, Key homeKey, Scope scope)
         {
-            Key localKey = node.selectLocalKey(executeAt.epoch, txn.keys, homeKey);
+            Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
             waitingOn = node.collectLocal(scope, DeterministicIdentitySet::new);
             // FIXME: fix/check thread safety
             CommandStore.onEach(waitingOn, instance -> {
                 Command command = instance.command(txnId);
-                command.preaccept(txn, homeKey, localKey); // ensure pre-accepted
+                command.preaccept(txn, homeKey, progressKey); // ensure pre-accepted
                 switch (command.status())
                 {
                     case NotWitnessed:
@@ -134,7 +134,7 @@ public class ReadData extends TxnRequest
     public void process(Node node, Node.Id from, ReplyContext replyContext)
     {
         new LocalRead(txnId, node, from, txn.read.keys().intersect(scope().keys()), replyContext)
-        .setup(txnId, txn, homeKey, executeAt, scope());
+        .setup(txnId, txn, homeKey, scope());
     }
 
     @Override

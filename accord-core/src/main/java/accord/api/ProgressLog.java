@@ -62,7 +62,7 @@ public interface ProgressLog
      * A home shard should monitor this transaction for global progress.
      * A non-home shard can safely ignore this transaction, as it has been witnessed by a majority of the home shard.
      */
-    void commit(TxnId txnId, boolean isHomeCommitShard, boolean isHomeExecuteShard);
+    void commit(TxnId txnId, boolean isHomeShard);
 
     /**
      * The transaction is waiting to make progress, as all local dependencies have applied.

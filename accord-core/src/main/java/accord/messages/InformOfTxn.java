@@ -9,7 +9,7 @@ import accord.txn.TxnId;
 import static accord.messages.InformOfTxn.InformOfTxnNack.nack;
 import static accord.messages.InformOfTxn.InformOfTxnOk.ok;
 
-public class InformOfTxn implements Request
+public class InformOfTxn implements EpochRequest
 {
     final TxnId txnId;
     final Key homeKey;
@@ -24,9 +24,9 @@ public class InformOfTxn implements Request
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
-        Key localKey = node.selectLocalKey(txnId.epoch, txn.keys, homeKey);
+        Key progressKey = node.selectProgressKey(txnId, txn.keys, homeKey);
         Reply reply = node.ifLocal(homeKey, txnId.epoch, instance -> {
-            instance.command(txnId).preaccept(txn, homeKey, localKey);
+            instance.command(txnId).preaccept(txn, homeKey, progressKey);
             return ok();
         });
 
@@ -114,5 +114,11 @@ public class InformOfTxn implements Request
     public MessageType type()
     {
         return MessageType.INFORM_REQ;
+    }
+
+    @Override
+    public long waitForEpoch()
+    {
+        return txnId.epoch;
     }
 }

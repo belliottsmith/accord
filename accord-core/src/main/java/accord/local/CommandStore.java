@@ -39,7 +39,13 @@ public abstract class CommandStore
                             Agent agent,
                             DataStore store,
                             ProgressLog.Factory progressLogFactory,
-                            LongFunction<KeyRanges> rangesForEpoch);
+                            RangesForEpoch rangesForEpoch);
+    }
+
+    public interface RangesForEpoch
+    {
+        KeyRanges at(long epoch);
+        KeyRanges since(long epoch);
     }
 
     private final int generation;
@@ -49,7 +55,7 @@ public abstract class CommandStore
     private final Agent agent;
     private final DataStore store;
     private final ProgressLog progressLog;
-    private final LongFunction<KeyRanges> rangesForEpoch;
+    private final RangesForEpoch rangesForEpoch;
 
     private final NavigableMap<TxnId, Command> commands = new TreeMap<>();
     private final NavigableMap<Key, CommandsForKey> commandsForKey = new TreeMap<>();
@@ -61,7 +67,7 @@ public abstract class CommandStore
                         Agent agent,
                         DataStore store,
                         ProgressLog.Factory progressLogFactory,
-                        LongFunction<KeyRanges> rangesForEpoch)
+                        RangesForEpoch rangesForEpoch)
     {
         Preconditions.checkArgument(shardIndex < numShards);
         this.generation = generation;
@@ -124,9 +130,9 @@ public abstract class CommandStore
         return node;
     }
 
-    public KeyRanges ranges(long epoch)
+    public RangesForEpoch ranges()
     {
-        return rangesForEpoch.apply(epoch);
+        return rangesForEpoch;
     }
 
     public long latestEpoch()
@@ -252,7 +258,7 @@ public abstract class CommandStore
         public Synchronized(int generation, int index, int numShards, Node node,
                             Agent agent, DataStore store,
                             ProgressLog.Factory progressLogFactory,
-                            LongFunction<KeyRanges> rangesForEpoch)
+                            RangesForEpoch rangesForEpoch)
         {
             super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
         }
@@ -315,7 +321,7 @@ public abstract class CommandStore
 
         public SingleThread(int generation, int index, int numShards, Node node,
                             Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
-                            LongFunction<KeyRanges> rangesForEpoch)
+                            RangesForEpoch rangesForEpoch)
         {
             super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
             executor = Executors.newSingleThreadExecutor(r -> {
@@ -354,7 +360,7 @@ public abstract class CommandStore
 
         public Debug(int generation, int index, int numShards, Node node,
                      Agent agent, DataStore store, ProgressLog.Factory progressLogFactory,
-                     LongFunction<KeyRanges> rangesForEpoch)
+                     RangesForEpoch rangesForEpoch)
         {
             super(generation, index, numShards, node, agent, store, progressLogFactory, rangesForEpoch);
         }

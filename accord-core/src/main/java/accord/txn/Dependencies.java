@@ -69,7 +69,7 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
 
     public Iterable<TxnId> on(CommandStore commandStore, Timestamp executeAt)
     {
-        KeyRanges ranges = commandStore.ranges(executeAt.epoch);
+        KeyRanges ranges = commandStore.ranges().since(executeAt.epoch);
         if (ranges == null)
             return Collections.emptyList();
 

@@ -374,17 +374,17 @@ public class Node implements ConfigurationService.Listener
         return key != null ? key : selectRandomHomeKey(txnId);
     }
 
-    public Key selectLocalKey(long epoch, Keys keys, Key homeKey)
+    public Key selectProgressKey(TxnId txnId, Keys keys, Key homeKey)
     {
-        Key localKey = trySelectLocalKey(epoch, keys, homeKey);
-        if (localKey == null)
+        Key progressKey = trySelectProgressKey(txnId, keys, homeKey);
+        if (progressKey == null)
             throw new IllegalStateException();
-        return localKey;
+        return progressKey;
     }
 
-    public Key trySelectLocalKey(long epoch, Keys keys, Key homeKey)
+    public Key trySelectProgressKey(TxnId txnId, Keys keys, Key homeKey)
     {
-        Topology topology = this.topology.localForEpoch(epoch);
+        Topology topology = this.topology.localForEpoch(txnId.epoch);
         if (topology.ranges().contains(homeKey))
             return homeKey;
 

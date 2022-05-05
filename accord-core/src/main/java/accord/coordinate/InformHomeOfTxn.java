@@ -10,6 +10,7 @@ import accord.local.Node.Id;
 import accord.messages.Callback;
 import accord.messages.InformOfTxn;
 import accord.messages.InformOfTxn.InformOfTxnReply;
+import accord.topology.Shard;
 import accord.topology.Topology;
 import accord.txn.Txn;
 import accord.txn.TxnId;
@@ -21,19 +22,19 @@ public class InformHomeOfTxn extends CompletableFuture<Void> implements Callback
     final QuorumShardTracker tracker;
     Throwable failure;
 
-    InformHomeOfTxn(TxnId txnId, Key homeKey, Topology topology)
+    InformHomeOfTxn(TxnId txnId, Key homeKey, Shard homeShard)
     {
         this.txnId = txnId;
         this.homeKey = homeKey;
-        this.tracker = new QuorumShardTracker(topology.forKey(homeKey));
+        this.tracker = new QuorumShardTracker(homeShard);
     }
 
     public static CompletionStage<Void> inform(Node node, TxnId txnId, Txn txn, Key homeKey)
     {
         // TODO: we should not need to send the Txn here, but to avoid that we need to support no-ops
-        // TODO (now): consider range of topologies to use
-        InformHomeOfTxn inform = new InformHomeOfTxn(txnId, homeKey, node.topology().current());
-        node.send(node.topology().current().forKey(homeKey), new InformOfTxn(txnId, homeKey, txn), inform);
+        Shard homeShard = node.topology().forEpochIfKnown(homeKey, txnId.epoch);
+        InformHomeOfTxn inform = new InformHomeOfTxn(txnId, homeKey, homeShard);
+        node.send(homeShard.nodes, new InformOfTxn(txnId, homeKey, txn), inform);
         return inform;
     }
 

@@ -51,7 +51,7 @@ public class CheckOnCommitted extends CheckShardStatus
         try
         {
             CheckStatusOkFull full = (CheckStatusOkFull) max;
-            Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, full.homeKey);
+            Key progressKey = node.trySelectProgressKey(txnId, txn.keys, full.homeKey);
             switch (full.status)
             {
                 default: throw new IllegalStateException();
@@ -64,13 +64,13 @@ public class CheckOnCommitted extends CheckShardStatus
                 case Applied:
                     node.forEachLocal(txn.keys, full.executeAt.epoch, blockedAt.epoch, commandStore -> {
                         Command command = commandStore.command(txnId);
-                        command.apply(txn, full.homeKey, localKey, full.executeAt, full.deps, full.writes, full.result);
+                        command.apply(txn, full.homeKey, progressKey, full.executeAt, full.deps, full.writes, full.result);
                     });
                 case Committed:
                 case ReadyToExecute:
                     node.forEachLocal(txn.keys, txnId.epoch, blockedAt.epoch, commandStore -> {
                         Command command = commandStore.command(txnId);
-                        command.commit(txn, full.homeKey, localKey, full.executeAt, full.deps);
+                        command.commit(txn, full.homeKey, progressKey, full.executeAt, full.deps);
                     });
             }
         }

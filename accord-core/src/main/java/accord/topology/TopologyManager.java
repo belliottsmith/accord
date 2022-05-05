@@ -4,6 +4,7 @@ import accord.api.ConfigurationService;
 import accord.api.Key;
 import accord.coordinate.tracking.QuorumTracker;
 import accord.local.Node;
+import accord.messages.EpochRequest;
 import accord.messages.Request;
 import accord.messages.TxnRequest;
 import accord.topology.Topologies.Single;
@@ -192,13 +193,6 @@ public class TopologyManager implements ConfigurationService.Listener
             return epochs[(int) (currentEpoch - epoch)];
         }
 
-        long maxUnknownEpoch(TxnRequest.Scope scope)
-        {
-            if (currentEpoch < scope.waitForEpoch())
-                return scope.waitForEpoch();
-            return 0;
-        }
-
         boolean requiresHistoricalTopologiesFor(Keys keys, long epoch)
         {
             Preconditions.checkState(epoch <= currentEpoch);
@@ -381,6 +375,11 @@ public class TopologyManager implements ConfigurationService.Listener
         return epochs.get(epoch).local();
     }
 
+    public Topology globalForEpoch(long epoch)
+    {
+        return epochs.get(epoch).global();
+    }
+
     public Topologies forEpoch(Txn txn, long epoch)
     {
         return forEpoch(txn.keys(), epoch);
@@ -388,9 +387,13 @@ public class TopologyManager implements ConfigurationService.Listener
 
     public long maxUnknownEpoch(Request request)
     {
-        if (!(request instanceof TxnRequest))
+        if (!(request instanceof EpochRequest))
             return 0;
 
-        return epochs.maxUnknownEpoch(((TxnRequest) request).scope());
+        long waitForEpoch = ((EpochRequest) request).waitForEpoch();
+        if (epochs.currentEpoch < waitForEpoch)
+            return waitForEpoch;
+
+        return 0;
     }
 }

@@ -217,7 +217,7 @@ public class TopologyRandomizer
         {
             KeyRanges previous = previouslyReplicated.getOrDefault(entry.getKey(), KeyRanges.EMPTY);
             KeyRanges added = entry.getValue();
-            KeyRanges merged = previous.merge(added).mergeTouching();
+            KeyRanges merged = previous.union(added).mergeTouching();
             previouslyReplicated.put(entry.getKey(), merged);
         }
 

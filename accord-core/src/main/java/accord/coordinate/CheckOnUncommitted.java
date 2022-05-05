@@ -89,8 +89,8 @@ public class CheckOnUncommitted extends CheckShardStatus
                         // TODO (now): should we merge with CheckOnCommitted and just apply here if the local node accepts it?
                     case Committed:
                     case ReadyToExecute:
-                        Key localKey = node.trySelectLocalKey(txnId.epoch, txn.keys, full.homeKey);
-                        command.commit(txn, full.homeKey, localKey, full.executeAt, full.deps);
+                        Key progressKey = node.trySelectProgressKey(txnId, txn.keys, full.homeKey);
+                        command.commit(txn, full.homeKey, progressKey, full.executeAt, full.deps);
                         break;
                 }
             });

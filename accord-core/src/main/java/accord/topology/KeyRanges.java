@@ -222,7 +222,7 @@ public class KeyRanges implements Iterable<KeyRange>
     /**
      * Adds a set of non-overlapping ranges
      */
-    public KeyRanges union(KeyRanges that)
+    public KeyRanges combine(KeyRanges that)
     {
         KeyRange[] combined = new KeyRange[this.ranges.length + that.ranges.length];
         System.arraycopy(this.ranges, 0, combined, 0, this.ranges.length);
@@ -235,9 +235,9 @@ public class KeyRanges implements Iterable<KeyRange>
         return new KeyRanges(combined);
     }
 
-    public KeyRanges union(KeyRange range)
+    public KeyRanges combine(KeyRange range)
     {
-        return union(new KeyRanges(new KeyRange[]{range}));
+        return combine(new KeyRanges(new KeyRange[]{ range}));
     }
 
     private static KeyRange tryMerge(KeyRange range1, KeyRange range2)
@@ -247,7 +247,8 @@ public class KeyRanges implements Iterable<KeyRange>
         return range1.tryMerge(range2);
     }
 
-    public KeyRanges merge(KeyRanges that)
+    // TODO (now): optimise for case where one contains the other
+    public KeyRanges union(KeyRanges that)
     {
         List<KeyRange> result = new ArrayList<>(this.size() + that.size());
         int thisIdx = 0, thisSize = this.size();

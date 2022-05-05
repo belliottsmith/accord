@@ -22,7 +22,7 @@ public class Writes
         if (write == null)
             return;
 
-        KeyRanges ranges = commandStore.ranges(executeAt.epoch);
+        KeyRanges ranges = commandStore.ranges().since(executeAt.epoch);
         if (ranges == null)
             return;
 

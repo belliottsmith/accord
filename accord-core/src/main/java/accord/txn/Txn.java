@@ -87,7 +87,7 @@ public class Txn
 
     public Data read(Command command, Keys keys)
     {
-        return keys.foldl(command.commandStore.ranges(command.executeAt().epoch), (key, accumulate) -> {
+        return keys.foldl(command.commandStore.ranges().at(command.executeAt().epoch), (key, accumulate) -> {
             CommandStore commandStore = command.commandStore;
             if (!commandStore.hashIntersects(key))
                 return accumulate;
