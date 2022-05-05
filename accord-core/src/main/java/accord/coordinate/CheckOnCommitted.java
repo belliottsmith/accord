@@ -10,6 +10,7 @@ import accord.txn.Txn;
 import accord.txn.TxnId;
 
 import static accord.local.Status.Executed;
+import static accord.local.Status.NotWitnessed;
 
 /**
  * Check on the status of a locally-uncommitted transaction. Returns early if any result indicates Committed, otherwise
@@ -44,14 +45,18 @@ public class CheckOnCommitted extends CheckShardStatus
 
     void onSuccessCriteriaOrExhaustion(CheckStatusOkFull max)
     {
+        switch (max.status)
+        {
+            case NotWitnessed:
+            case PreAccepted:
+            case Accepted:
+                return;
+        }
+
         Key progressKey = node.trySelectProgressKey(txnId, txn.keys, max.homeKey);
         switch (max.status)
         {
             default: throw new IllegalStateException();
-            case NotWitnessed:
-            case PreAccepted:
-            case Accepted:
-                break;
             case Executed:
             case Applied:
                 node.forEachLocalSince(txn.keys, max.executeAt.epoch, commandStore -> {

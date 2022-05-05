@@ -282,7 +282,7 @@ public class TopologyManager implements ConfigurationService.Listener
         int i = (int)(snapshot.currentEpoch - maxEpoch);
         int limit = (int)(Math.min(1 + snapshot.currentEpoch - minEpoch, snapshot.epochs.length));
         int count = limit - i;
-        while (limit + 1 < snapshot.epochs.length && !snapshot.epochs[limit + 1].syncCompleteFor(keys))
+        while (limit < snapshot.epochs.length && !snapshot.epochs[limit].syncCompleteFor(keys))
         {
             ++count;
             ++limit;
