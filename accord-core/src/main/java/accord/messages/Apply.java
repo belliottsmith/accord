@@ -24,9 +24,9 @@ public class Apply extends TxnRequest
     public final Writes writes;
     public final Result result;
 
-    public Apply(Scope scope, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
+    public Apply(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
     {
-        super(scope);
+        super(to, topologies, txn.keys);
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
@@ -36,16 +36,10 @@ public class Apply extends TxnRequest
         this.result = result;
     }
 
-    public Apply(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, Writes writes, Result result)
-    {
-        // TODO (now): should we apply at later epochs, or rely on sync for that?
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt, deps, writes, result);
-    }
-
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-        node.forEachLocalSince(scope().keys(), executeAt,
+        node.forEachLocalSince(scope(), executeAt,
                                instance -> instance.command(txnId).apply(txn, homeKey, progressKey, executeAt, deps, writes, result));
         node.reply(replyToNode, replyContext, ApplyOk.INSTANCE);
     }

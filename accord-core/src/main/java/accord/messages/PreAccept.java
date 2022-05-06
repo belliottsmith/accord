@@ -1,9 +1,9 @@
 package accord.messages;
 
-import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.TreeMap;
 import java.util.stream.Stream;
+
+import com.google.common.annotations.VisibleForTesting;
 
 import accord.api.Key;
 import accord.local.CommandStore;
@@ -23,27 +23,35 @@ public class PreAccept extends TxnRequest
     public final TxnId txnId;
     public final Txn txn;
     public final Key homeKey;
+    public final long minEpoch;
     public final long maxEpoch;
 
-    public PreAccept(Scope scope, TxnId txnId, Txn txn, Key homeKey, long maxEpoch)
+    public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey)
     {
-        super(scope);
+        super(to, topologies, txn.keys);
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
-        this.maxEpoch = maxEpoch;
+        this.minEpoch = topologies.oldestEpoch();
+        this.maxEpoch = topologies.currentEpoch();
     }
 
-    public PreAccept(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, long maxEpoch)
+    @VisibleForTesting
+    public PreAccept(Keys scope, long waitForEpoch, long minEpoch, long maxEpoch, TxnId txnId, Txn txn, Key homeKey)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, maxEpoch);
+        super(scope, waitForEpoch);
+        this.txnId = txnId;
+        this.txn = txn;
+        this.homeKey = homeKey;
+        this.minEpoch = minEpoch;
+        this.maxEpoch = maxEpoch;
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)
     {
         // TODO: verify we handle all of the scope() keys
         Key progressKey = node.trySelectProgressKey(waitForEpoch(), txn.keys, homeKey);
-        node.reply(from, replyContext, node.mapReduceLocal(scope().keys(), scope().minEpoch(), maxEpoch, instance -> {
+        node.reply(from, replyContext, node.mapReduceLocal(scope(), minEpoch, maxEpoch, instance -> {
             // note: this diverges from the paper, in that instead of waiting for JoinShard,
             //       we PreAccept to both old and new topologies and require quorums in both.
             //       This necessitates sending to ALL replicas of old topology, not only electorate (as fast path may be unreachable).

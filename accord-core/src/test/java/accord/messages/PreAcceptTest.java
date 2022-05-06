@@ -56,14 +56,9 @@ public class PreAcceptTest
                         CommandStores.SingleThread::new);
     }
 
-    private static TxnRequest.Scope scope(TxnId txnId, Txn txn)
-    {
-        return new TxnRequest.Scope(txnId.epoch, txnId.epoch, txnId.epoch, txn.keys());
-    }
-
     private static PreAccept preAccept(TxnId txnId, Txn txn, Key homeKey)
     {
-        return new PreAccept(scope(txnId, txn), txnId, txn, homeKey, txnId.epoch);
+        return new PreAccept(txn.keys, txnId.epoch, txnId.epoch, txnId.epoch, txnId, txn, homeKey);
     }
 
     @Test

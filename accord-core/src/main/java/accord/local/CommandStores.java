@@ -352,11 +352,6 @@ public abstract class CommandStores
         forEach(ShardedRanges::shards, keys, minEpoch, maxEpoch, forEach);
     }
 
-    public void forEach(TxnRequest.Scope scope, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
-    {
-        forEach(scope.keys(), minEpoch, maxEpoch, forEach);
-    }
-
     public <T> T mapReduce(Keys keys, long epoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
     {
         return mapReduce(keys, epoch, epoch, map, reduce);

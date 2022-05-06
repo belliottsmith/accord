@@ -18,23 +18,20 @@ public class Accept extends TxnRequest
     public final TxnId txnId;
     public final Txn txn;
     public final Key homeKey;
+    public final long minEpoch;
     public final Timestamp executeAt;
     public final Dependencies deps;
 
-    public Accept(Scope scope, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
+    public Accept(Node.Id to, Topologies topologies, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
     {
-        super(scope);
+        super(to, topologies, txn.keys);
         this.ballot = ballot;
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
+        this.minEpoch = topologies.oldestEpoch();
         this.executeAt = executeAt;
         this.deps = deps;
-    }
-
-    public Accept(Node.Id dst, Topologies topologies, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps)
-    {
-        this(Scope.forTopologies(dst, topologies, txn), ballot, txnId, txn, homeKey, executeAt, deps);
     }
 
     public void process(Node node, Node.Id replyToNode, ReplyContext replyContext)
@@ -43,7 +40,7 @@ public class Accept extends TxnRequest
         // TODO: when we begin expunging old epochs we need to ensure we handle the case where we do not fully handle the keys;
         //       since this will likely imply the transaction has been applied or aborted we can indicate the coordinator
         //       should enquire as to the result
-        node.reply(replyToNode, replyContext, node.mapReduceLocal(scope().keys(), scope().minEpoch(), executeAt.epoch, instance -> {
+        node.reply(replyToNode, replyContext, node.mapReduceLocal(scope(), minEpoch, executeAt.epoch, instance -> {
             Command command = instance.command(txnId);
             if (!command.accept(ballot, txn, homeKey, progressKey, executeAt, deps))
                 return new AcceptNack(txnId, command.promised());

@@ -35,24 +35,19 @@ public class BeginRecovery extends TxnRequest
     final Key homeKey;
     final Ballot ballot;
 
-    public BeginRecovery(Scope scope, TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
+    public BeginRecovery(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
     {
-        super(scope);
+        super(to, topologies, txn.keys);
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
         this.ballot = ballot;
     }
 
-    public BeginRecovery(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Ballot ballot)
-    {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, ballot);
-    }
-
     public void process(Node node, Id replyToNode, ReplyContext replyContext)
     {
         Key progressKey = node.selectProgressKey(txnId, txn.keys, homeKey);
-        RecoverReply reply = node.mapReduceLocal(scope().keys(), txnId.epoch, txnId.epoch, instance -> {
+        RecoverReply reply = node.mapReduceLocal(scope(), txnId.epoch, txnId.epoch, instance -> {
             Command command = instance.command(txnId);
 
             if (!command.recover(txn, homeKey, progressKey, ballot))

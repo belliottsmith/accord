@@ -15,22 +15,17 @@ public class Commit extends ReadData
     public final Dependencies deps;
     public final boolean read;
 
-    public Commit(Scope scope, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, boolean read)
-    {
-        super(scope, txnId, txn, homeKey, executeAt);
-        this.deps = deps;
-        this.read = read;
-    }
-
     public Commit(Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt, Dependencies deps, boolean read)
     {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt, deps, read);
+        super(to, topologies, txnId, txn, homeKey, executeAt);
+        this.deps = deps;
+        this.read = read;
     }
 
     public void process(Node node, Id from, ReplyContext replyContext)
     {
         Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-        node.forEachLocal(scope().keys(), txnId.epoch,
+        node.forEachLocal(scope(), txnId.epoch,
                           instance -> instance.command(txnId).commit(txn, homeKey, progressKey, executeAt, deps));
 
         if (read)

@@ -231,11 +231,6 @@ public class Node implements ConfigurationService.Listener
         commandStores.forEach(keys, sinceEpoch, Long.MAX_VALUE, forEach);
     }
 
-    public void forEachLocal(TxnRequest.Scope scope, long minEpoch, long maxEpoch, Consumer<CommandStore> forEach)
-    {
-        commandStores.forEach(scope, minEpoch, maxEpoch, forEach);
-    }
-
     public <T> T mapReduceLocal(Keys keys, long minEpoch, long maxEpoch, Function<CommandStore, T> map, BiFunction<T, T, T> reduce)
     {
         return commandStores.mapReduce(keys, minEpoch, maxEpoch, map, reduce);

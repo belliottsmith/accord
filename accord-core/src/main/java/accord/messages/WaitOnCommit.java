@@ -87,16 +87,11 @@ public class WaitOnCommit extends TxnRequest
     public final TxnId txnId;
     public final Keys keys; // TODO (now): redundant with TxnRequest.Scope
 
-    public WaitOnCommit(Scope scope, TxnId txnId, Keys keys)
-    {
-        super(scope);
-        this.txnId = txnId;
-        this.keys = keys;
-    }
-
     public WaitOnCommit(Id to, Topologies topologies, TxnId txnId, Keys keys)
     {
-        this(Scope.forTopologies(to, topologies, keys), txnId, keys);
+        super(to, topologies, keys);
+        this.txnId = txnId;
+        this.keys = keys;
     }
 
     public void process(Node node, Id replyToNode, ReplyContext replyContext)

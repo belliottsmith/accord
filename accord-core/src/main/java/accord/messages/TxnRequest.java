@@ -5,142 +5,115 @@ import accord.topology.KeyRanges;
 import accord.topology.Topologies;
 import accord.topology.Topology;
 import accord.txn.Keys;
-import accord.txn.Txn;
-
-import java.util.Objects;
-
-import com.google.common.base.Preconditions;
 
 public abstract class TxnRequest implements EpochRequest
 {
-    private final Scope scope;
+    private final Keys scope;
+    private final long waitForEpoch;
 
-    public TxnRequest(Scope scope)
+    public TxnRequest(Node.Id to, Topologies topologies, Keys keys)
     {
-        this.scope = scope;
+        int startIndex = findLatestRelevantEpochIndex(to, topologies, keys);
+        this.scope = computeScope(to, topologies, keys, startIndex);
+        this.waitForEpoch = computeWaitForEpoch(to, topologies, startIndex);
     }
 
-    public Scope scope()
+    public TxnRequest(Keys scope, long waitForEpoch)
+    {
+        this.scope = scope;
+        this.waitForEpoch = waitForEpoch;
+    }
+
+    public Keys scope()
     {
         return scope;
     }
 
     public long waitForEpoch()
     {
-        return scope().waitForEpoch();
+        return waitForEpoch;
     }
 
-    /**
-     * Indicates the keys the coordinator expects the recipient to service for a request, and
-     * the minimum epochs the recipient will need to be aware of for each set of keys
-     */
-    public static class Scope
+    private static int findLatestRelevantEpochIndex(Node.Id node, Topologies topologies, Keys keys)
     {
-        // the first epoch we should process
-        private final long minEpoch;
+        KeyRanges latest = topologies.get(0).rangesForNode(node);
 
-        // the last epoch on which this command must be logically processed,
-        // i.e. for Accept and Commit this is executeAt.epoch
-        //      for all other commands this is the same as minEpoch
-        private final long maxEpoch;
+        if (latest != null && latest.intersects(keys))
+            return 0;
 
-        // the epoch we must wait for to be able to safely process this operation
-        private final long waitForEpoch;
-        private final Keys keys;
+        int i = 0;
+        int mi = topologies.size();
 
-        public Scope(long minEpoch, long maxEpoch, long waitForEpoch, Keys keys)
+        // find first non-null for node
+        while (latest == null)
         {
-            this.minEpoch = minEpoch;
-            this.maxEpoch = maxEpoch;
-            Preconditions.checkArgument(!keys.isEmpty());
-            this.waitForEpoch = waitForEpoch;
-            this.keys = keys;
+            if (++i == mi)
+                return mi;
+
+            latest = topologies.get(i).rangesForNode(node);
         }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Keys keys)
+        if (latest.intersects(keys))
+            return i;
+
+        // find first non-empty intersection for node
+        while (++i < mi)
         {
-            long waitForEpoch = 0;
-            Keys scopeKeys = Keys.EMPTY;
-            KeyRanges lastRanges = null;
-            for (int i=topologies.size() - 1; i>=0; i--)
+            KeyRanges next = topologies.get(i).rangesForNode(node);
+            if (!next.equals(latest))
             {
-                Topology topology = topologies.get(i);
-                KeyRanges topologyRanges = topology.rangesForNode(node);
-                Keys epochKeys;
-                if (topologyRanges == null)
-                {
-                    epochKeys = Keys.EMPTY;
-                    if (lastRanges == null)
-                        continue;
-                }
-                else
-                {
-                    if (topologyRanges.equals(lastRanges))
-                        continue;
-
-                    epochKeys = keys.intersect(topologyRanges);
-                }
-
-                waitForEpoch = topology.epoch();
-                scopeKeys = scopeKeys.union(epochKeys);
-                lastRanges = topologyRanges;
+                if (next.intersects(keys))
+                    return i;
+                latest = next;
             }
-
-            return new Scope(topologies.oldestEpoch(), topologies.currentEpoch(), waitForEpoch, scopeKeys);
         }
+        return mi;
+    }
 
-        public static Scope forTopologies(Node.Id node, Topologies topologies, Txn txn)
+    // for now use a simple heuristic of whether the node's ownership ranges have changed,
+    // on the assumption that this might also mean some local shard rearrangement
+    // except if the latest epoch is empty for the keys
+    public static long computeWaitForEpoch(Node.Id node, Topologies topologies, Keys keys)
+    {
+        return computeWaitForEpoch(node, topologies, findLatestRelevantEpochIndex(node, topologies, keys));
+    }
+
+    public static long computeWaitForEpoch(Node.Id node, Topologies topologies, int startIndex)
+    {
+        int i = startIndex;
+        int mi = topologies.size();
+        if (i == mi)
+            return topologies.oldestEpoch();
+
+        KeyRanges latest = topologies.get(i).rangesForNode(node);
+        while (++i < mi)
         {
-            return forTopologies(node, topologies, txn.keys());
+            Topology topology = topologies.get(i);
+            KeyRanges ranges = topology.rangesForNode(node);
+            if (ranges == null || !ranges.equals(latest))
+                break;
         }
+        return topologies.get(i - 1).epoch();
+    }
 
-        public long minEpoch()
-        {
-            return minEpoch;
-        }
+    public static Keys computeScope(Node.Id node, Topologies topologies, Keys keys)
+    {
+        return computeScope(node, topologies, keys, findLatestRelevantEpochIndex(node, topologies, keys));
+    }
 
-        public long maxEpoch()
+    public static Keys computeScope(Node.Id node, Topologies topologies, Keys keys, int startIndex)
+    {
+        KeyRanges last = null;
+        Keys scopeKeys = Keys.EMPTY;
+        for (int i = startIndex, mi = topologies.size() ; i < mi ; ++i)
         {
-            return maxEpoch;
-        }
+            Topology topology = topologies.get(i);
+            KeyRanges ranges = topology.rangesForNode(node);
+            if (ranges != last && ranges != null && !ranges.equals(last))
+                scopeKeys = scopeKeys.union(keys.intersect(ranges));
 
-        public long waitForEpoch()
-        {
-            return waitForEpoch;
+            last = ranges;
         }
-
-        public Keys keys()
-        {
-            return keys;
-        }
-
-        @Override
-        public boolean equals(Object o)
-        {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            Scope scope = (Scope) o;
-            return waitForEpoch == scope.waitForEpoch
-                   && minEpoch == scope.minEpoch
-                   && maxEpoch == scope.maxEpoch
-                   && keys.equals(scope.keys);
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(minEpoch, maxEpoch, waitForEpoch, keys);
-        }
-
-        @Override
-        public String toString()
-        {
-            return "Scope{" +
-                   "minEpoch=" + minEpoch +
-                   ", maxEpoch=" + maxEpoch +
-                   ", waitForEpoch=" + waitForEpoch +
-                   ", keys=" + keys +
-                   '}';
-        }
+        return scopeKeys;
     }
 }

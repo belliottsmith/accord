@@ -81,10 +81,10 @@ public class ReadData extends TxnRequest
             }
         }
 
-        synchronized void setup(TxnId txnId, Txn txn, Key homeKey, Scope scope, Timestamp executeAt)
+        synchronized void setup(TxnId txnId, Txn txn, Key homeKey, Keys keys, Timestamp executeAt)
         {
             Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-            waitingOn = node.collectLocal(scope.keys(), executeAt, DeterministicIdentitySet::new);
+            waitingOn = node.collectLocal(keys, executeAt, DeterministicIdentitySet::new);
             // FIXME: fix/check thread safety
             CommandStore.onEach(waitingOn, instance -> {
                 Command command = instance.command(txnId);
@@ -117,23 +117,18 @@ public class ReadData extends TxnRequest
     final Key homeKey;
     public final Timestamp executeAt;
 
-    public ReadData(Scope scope, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt)
+    public ReadData(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt)
     {
-        super(scope);
+        super(to, topologies, txn.keys);
         this.txnId = txnId;
         this.txn = txn;
         this.homeKey = homeKey;
         this.executeAt = executeAt;
     }
 
-    public ReadData(Node.Id to, Topologies topologies, TxnId txnId, Txn txn, Key homeKey, Timestamp executeAt)
-    {
-        this(Scope.forTopologies(to, topologies, txn), txnId, txn, homeKey, executeAt);
-    }
-
     public void process(Node node, Node.Id from, ReplyContext replyContext)
     {
-        new LocalRead(txnId, node, from, txn.read.keys().intersect(scope().keys()), replyContext)
+        new LocalRead(txnId, node, from, txn.read.keys().intersect(scope()), replyContext)
             .setup(txnId, txn, homeKey, scope(), executeAt);
     }
 

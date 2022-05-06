@@ -724,7 +724,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         public void process(Node node, Id from, ReplyContext replyContext)
         {
             Key progressKey = node.trySelectProgressKey(txnId, txn.keys, homeKey);
-            node.reply(from, replyContext, node.mapReduceLocalSince(scope().keys(), executeAt, instance -> {
+            node.reply(from, replyContext, node.mapReduceLocalSince(scope(), executeAt, instance -> {
                 Command command = instance.command(txnId);
                 command.apply(txn, homeKey, progressKey, executeAt, deps, writes, result);
                 if (homeKey.equals(progressKey) && command.handles(txnId.epoch, progressKey))
