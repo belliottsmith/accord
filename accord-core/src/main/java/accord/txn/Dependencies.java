@@ -2,43 +2,61 @@ package accord.txn;
 
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
 
+import accord.api.Key;
 import accord.local.Command;
 import accord.local.CommandStore;
 import accord.topology.KeyRanges;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 
 // TODO: do not send Txn
 // TODO: implementation efficiency
 public class Dependencies implements Iterable<Entry<TxnId, Txn>>
 {
+    // TEMPORARY: this is used ONLY for SimpleProgressLog.blockingState which may not know the homeKey
+    // or be able to invalidate a transaction it cannot witness anywhere
+    public static class TxnAndHomeKey
+    {
+        public final Txn txn;
+        public final Key homeKey;
+
+        TxnAndHomeKey(Txn txn, Key homeKey)
+        {
+            this.txn = txn;
+            this.homeKey = homeKey;
+        }
+    }
+
     // TODO: encapsulate
-    public final NavigableMap<TxnId, Txn> deps;
+    public final NavigableMap<TxnId, TxnAndHomeKey> deps;
 
     public Dependencies()
     {
         this.deps = new TreeMap<>();
     }
 
-    public Dependencies(NavigableMap<TxnId, Txn> deps)
+    public Dependencies(NavigableMap<TxnId, TxnAndHomeKey> deps)
     {
         this.deps = deps;
     }
 
     public void add(Command command)
     {
-        add(command.txnId(), command.txn());
+        add(command.txnId(), command.txn(), command.homeKey());
     }
 
     @VisibleForTesting
-    public Dependencies add(TxnId txnId, Txn txn)
+    public Dependencies add(TxnId txnId, Txn txn, Key homeKey)
     {
-        deps.put(txnId, txn);
+        Preconditions.checkState(homeKey != null);
+        deps.put(txnId, new TxnAndHomeKey(txn, homeKey));
         return this;
     }
 
@@ -64,7 +82,7 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
 
     public Txn get(TxnId txnId)
     {
-        return deps.get(txnId);
+        return deps.get(txnId).txn;
     }
 
     public Iterable<TxnId> on(CommandStore commandStore, Timestamp executeAt)
@@ -75,14 +93,19 @@ public class Dependencies implements Iterable<Entry<TxnId, Txn>>
 
         return deps.entrySet()
                 .stream()
-                .filter(e -> commandStore.intersects(e.getValue().keys(), ranges))
+                .filter(e -> commandStore.intersects(e.getValue().txn.keys(), ranges))
                 .map(Entry::getKey)::iterator;
+    }
+
+    public Key homeKey(TxnId txnId)
+    {
+        return deps.get(txnId).homeKey;
     }
 
     @Override
     public Iterator<Entry<TxnId, Txn>> iterator()
     {
-        return deps.entrySet().iterator();
+        return deps.entrySet().stream().map(e -> Map.entry(e.getKey(), e.getValue().txn)).iterator();
     }
 
     public int size()

@@ -31,7 +31,7 @@ public class Command implements Listener, Consumer<Listener>
     private Key homeKey, progressKey;
     private Txn txn; // TODO: only store this on the home shard, or split to each shard independently
     private Ballot promised = Ballot.ZERO, accepted = Ballot.ZERO;
-    private Timestamp executeAt, executeAtExclusiveLowerBound; // TODO: compress these states together
+    private Timestamp executeAt; // TODO: compress these states together
     private Dependencies deps = new Dependencies();
     private Writes writes;
     private Result result;
@@ -299,11 +299,11 @@ public class Command implements Listener, Consumer<Listener>
     {
         switch (command.status)
         {
+            default: throw new IllegalStateException();
             case NotWitnessed:
             case PreAccepted:
             case Accepted:
-                if (command.executeAtExclusiveLowerBound == null || command.executeAtExclusiveLowerBound.compareTo(executeAt) <= 0)
-                    break;
+                break;
 
             case Committed:
             case ReadyToExecute:
@@ -336,10 +336,13 @@ public class Command implements Listener, Consumer<Listener>
 
         if (waitingOnApply != null)
         {
-            Command blockedBy = blockedBy();
+            BlockedBy blockedBy = blockedBy();
             if (blockedBy != null)
             {
-                commandStore.progressLog().waiting(txnId, blockedBy.txnId);
+                Key homeKey = blockedBy.directlyBlockedBy.homeKey();
+                if (homeKey == null)
+                    homeKey = blockedBy.directlyBlocked.deps.homeKey(blockedBy.directlyBlockedBy.txnId());
+                commandStore.progressLog().waiting(blockedBy.directlyBlockedBy.txnId, homeKey);
                 return;
             }
             assert waitingOnApply == null;
@@ -370,7 +373,6 @@ public class Command implements Listener, Consumer<Listener>
     {
         if (!dependency.hasBeen(Committed))
         {
-            assert dependency.executeAtExclusiveLowerBound != null && dependency.executeAtExclusiveLowerBound.compareTo(executeAt) >= 0;
             dependency.removeListener(this);
         }
         else if (dependency.executeAt.compareTo(executeAt) > 0)
@@ -389,16 +391,34 @@ public class Command implements Listener, Consumer<Listener>
         }
     }
 
-    public Command blockedBy()
+    // TEMPORARY: once we can invalidate commands that have not been witnessed on any shard, we do not need to know the home shard
+    static class BlockedBy
     {
+        final Command directlyBlocked;
+        final Command directlyBlockedBy;
+
+        BlockedBy(Command directlyBlocked, Command directlyBlockedBy)
+        {
+            this.directlyBlocked = directlyBlocked;
+            this.directlyBlockedBy = directlyBlockedBy;
+        }
+    }
+
+    public BlockedBy blockedBy()
+    {
+        Command prev = this;
         Command cur = directlyBlockedBy();
         if (cur == null)
             return null;
 
         Command next;
         while (null != (next = cur.directlyBlockedBy()))
+        {
+            prev = cur;
             cur = next;
-        return cur;
+        }
+
+        return new BlockedBy(prev, cur);
     }
 
     /**
@@ -460,33 +480,6 @@ public class Command implements Listener, Consumer<Listener>
     {
         if (this.txn == null) this.txn = txn;
         else if (!this.txn.equals(txn)) throw new AssertionError();
-    }
-
-    // TODO: maybe make this persistent, or abstract so implementation may do so
-    public void mustExecuteAfter(Timestamp exclusiveLowerBound)
-    {
-        if (executeAtExclusiveLowerBound == null || executeAtExclusiveLowerBound.compareTo(exclusiveLowerBound) < 0)
-        {
-            executeAtExclusiveLowerBound = exclusiveLowerBound;
-            listeners.forEach(this);
-        }
-    }
-
-    private long homeEpoch()
-    {
-        switch (status)
-        {
-            default: throw new AssertionError();
-            case NotWitnessed:
-            case PreAccepted:
-            case Accepted:
-            case Committed:
-                return txnId.epoch;
-            case ReadyToExecute:
-            case Executed:
-            case Applied:
-                return executeAt.epoch;
-        }
     }
 
     public boolean handles(long epoch, Key someKey)

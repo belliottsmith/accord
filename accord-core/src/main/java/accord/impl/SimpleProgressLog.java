@@ -49,7 +49,6 @@ import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.Disseminating
 import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.NotExecuted;
 import static accord.impl.SimpleProgressLog.HomeState.GlobalStatus.PendingDurable;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.Committed;
-import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.NotWitnessed;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.ReadyToExecute;
 import static accord.impl.SimpleProgressLog.HomeState.LocalStatus.Uncommitted;
 import static accord.impl.SimpleProgressLog.NonHomeState.Safe;
@@ -106,7 +105,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             NotExecuted, Disseminating, PendingDurable, Durable, Done // TODO: manage propagating from Durable to everyone
         }
 
-        LocalStatus local = NotWitnessed;
+        LocalStatus local = LocalStatus.NotWitnessed;
         Progress localProgress = NoneExpected;
         Status maxStatus;
         Ballot maxPromised;
@@ -199,7 +198,7 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
 
         void executedOnAllShards(Node node, Command command, Set<Id> persistedOn)
         {
-            if (local == NotWitnessed)
+            if (local == LocalStatus.NotWitnessed)
             {
                 global = PendingDurable;
                 globalProgress = NoneExpected;
@@ -342,35 +341,35 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
 
     static class BlockingState
     {
-        Timestamp blockedOnCommitAt;
-        boolean blockedOnExecute;
+        Status blockedOn = Status.NotWitnessed;
         Progress progress = NoneExpected;
+        Key homeKey;
 
-        void recordBlocker(Timestamp waitingAt, Command blockedBy)
+        void recordBlocking(Command blocking, Key homeKey)
         {
-            if (blockedBy.hasBeen(Status.Committed))
+            Preconditions.checkState(homeKey != null);
+            this.homeKey = homeKey;
+            switch (blocking.status())
             {
-                if (!blockedOnExecute)
-                {
-                    blockedOnExecute = true;
-                    progress = Expected;
-                }
-            }
-            else
-            {
-                if (blockedOnCommitAt == null || blockedOnCommitAt.compareTo(waitingAt) < 0)
-                {
-                    blockedOnCommitAt = waitingAt;
-                    // we reset investigating state as the timestamp is not a lower bound for the blocking task's execution
-                    // until we have contacted a quorum
-                    progress = Expected;
-                }
+                default: throw new IllegalStateException();
+                case NotWitnessed:
+                case PreAccepted:
+                case Accepted:
+                    blockedOn = Status.Committed;
+                    break;
+                case Committed:
+                case ReadyToExecute:
+                    blockedOn = Executed;
+                    break;
+                case Executed:
+                case Applied:
+                    throw new IllegalStateException("Should not be recorded as blocked if result already recorded locally");
             }
         }
 
         void recordCommit()
         {
-            if (!blockedOnExecute)
+            if (blockedOn == Status.Committed)
                 progress = NoneExpected;
         }
 
@@ -381,62 +380,57 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
 
         void update(Node node, TxnId txnId, Command command)
         {
-            switch (progress)
+            if (progress != NoProgress)
             {
-                default: throw new IllegalStateException();
-                case Done:
-                case NoneExpected:
-                case Investigating:
-                    break;
-                case Expected:
-                    progress = NoProgress;
-                    break;
-                case NoProgress:
-                    // check status with the only keys we know, if any, then:
-                    // 1. if we cannot find any primary record of the transaction, then it cannot be a dependency so record this fact
-                    // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
-                    Key someKey = command.someKey();
-                    Shard someShard = node.topology().forEpochIfKnown(someKey, txnId.epoch);
-                    Timestamp blockedAt = blockedOnCommitAt;
-                    if (someShard == null)
-                    {
-                        node.configService().fetchTopologyForEpoch(txnId.epoch);
+                progress = advance(progress);
+                return;
+            }
+
+            progress = Investigating;
+            // check status with the only keys we know, if any, then:
+            // 1. if we cannot find any primary record of the transaction, then it cannot be a dependency so record this fact
+            // 2. otherwise record the homeKey for future reference and set the status based on whether progress has been made
+            Key someKey = command.someKey();
+            Shard someShard = node.topology().forEpochIfKnown(someKey, txnId.epoch);
+            if (someShard == null)
+            {
+                node.configService().fetchTopologyForEpoch(txnId.epoch);
+                progress = Expected;
+                return;
+            }
+            // TODO (now): if we have a quorum of PreAccept and we have contacted the home shard then we can set NonHomeSafe
+            CheckShardStatus check = blockedOn == Executed ? checkOnCommitted(node, txnId, command.txn(), someKey, someShard, txnId.epoch)
+                                                           : checkOnUncommitted(node, txnId, command.txn(), someKey, someShard, txnId.epoch);
+
+            check.addCallback((success, fail) -> {
+                if (fail != null)
+                {
+                    if (progress == Investigating)
+                        progress = Expected;
+                    return;
+                }
+                switch (success.status)
+                {
+                    default: throw new IllegalStateException();
+                    case NotWitnessed:
+                        // TODO: this should instead invalidate the transaction on this shard, which invalidates it for all shards,
+                        //       but we need to first support invalidation
+                        inform(node, txnId, command.txn(), homeKey);
                         progress = Expected;
                         break;
-                    }
-                    // TODO (now): if we have a quorum of PreAccept and we have contacted the home shard then we can set NonHomeSafe
-                    CheckShardStatus check = blockedOnExecute ? checkOnCommitted(node, txnId, command.txn(), someKey, someShard, txnId.epoch)
-                                                              : checkOnUncommitted(node, txnId, command.txn(), someKey, someShard, txnId.epoch, blockedAt);
-
-                    check.addCallback((success, fail) -> {
-                        if (fail != null)
-                        {
-                            if (progress == Investigating)
-                                progress = Expected;
-                            return;
-                        }
-                        switch (success.status)
-                        {
-                            default: throw new IllegalStateException();
-                            case NotWitnessed:
-                                if (!blockedOnExecute && blockedAt != null && blockedAt.equals(blockedOnCommitAt))
-                                    progress = NoneExpected;
-                                break;
-                            case PreAccepted:
-                            case Applied:
-                            case Accepted:
-                                break;
-                            case Committed:
-                            case ReadyToExecute:
-                                if (!blockedOnExecute)
-                                    progress = NoneExpected;
-                                break;
-                            case Executed:
-                                progress = Done;
-
-                        }
-                    });
-            }
+                    case PreAccepted:
+                    case Accepted:
+                        break;
+                    case Committed:
+                    case ReadyToExecute:
+                        if (blockedOn == Status.Committed)
+                            progress = NoneExpected;
+                        break;
+                    case Executed:
+                    case Applied:
+                        progress = Done;
+                }
+            });
         }
 
         public String toString()
@@ -465,12 +459,12 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
             this.command = command;
         }
 
-        void recordBlocker(Command waitingCommand, Command blockedByCommand)
+        void recordBlocking(Command blockedByCommand, Key homeKey)
         {
             Preconditions.checkArgument(blockedByCommand.txnId().equals(txnId));
             if (blockingState == null)
                 blockingState = new BlockingState();
-            blockingState.recordBlocker(waitingCommand.executeAt(), blockedByCommand);
+            blockingState.recordBlocking(blockedByCommand, homeKey);
         }
 
         void ensureAtLeast(NonHomeState ensureAtLeast)
@@ -651,12 +645,11 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
         }
 
         @Override
-        public void waiting(TxnId waiting, TxnId blockedBy)
+        public void waiting(TxnId blockedBy, Key homeKey)
         {
-            Command waitingCommand = commandStore.command(waiting);
             Command blockedByCommand = commandStore.command(blockedBy);
             if (!blockedByCommand.hasBeen(Executed))
-                ensure(blockedBy).recordBlocker(waitingCommand, blockedByCommand);
+                ensure(blockedBy).recordBlocking(blockedByCommand, homeKey);
         }
     }
 

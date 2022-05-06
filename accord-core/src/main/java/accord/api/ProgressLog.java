@@ -107,12 +107,12 @@ public interface ProgressLog
      * but not to all non-home shards. In such a case the transaction may be a false-dependency of another transaction that
      * needs to perform a read, and all nodes which may do so are waiting for the commit record to arrive.
      *
-     * If a quorum of the home shard does not know of the transaction, then it can be removed from the dependency set
-     * of {@code waiting}, which may proceed without waiting for it as it must take a later {@code executionAt}.
+     * If a quorum of the home shard does not know of the transaction, then we can ask the home shard to perform recovery
+     * to either complete or invalidate it, so that we may make progress.
      *
      * In all other scenarios, the implementation is free to choose its course of action.
      *
      * TODO (aborts): waitingOnTxn should not be a parameter; only known locally involved keys (not necessarily all keys)
      */
-    void waiting(TxnId waiting, TxnId blockedBy);
+    void waiting(TxnId blockedBy, Key homeKey);
 }

@@ -146,15 +146,15 @@ public class PreAccept extends TxnRequest
 
     static Dependencies calculateDeps(CommandStore commandStore, TxnId txnId, Txn txn, Timestamp executeAt)
     {
-        NavigableMap<TxnId, Txn> deps = new TreeMap<>();
+        Dependencies deps = new Dependencies();
         conflictsMayExecuteBefore(commandStore, executeAt, txn.keys).forEach(conflict -> {
             if (conflict.txnId().equals(txnId))
                 return;
 
             if (txn.isWrite() || conflict.txn().isWrite())
-                deps.put(conflict.txnId(), conflict.txn());
+                deps.add(conflict);
         });
-        return new Dependencies(deps);
+        return deps;
     }
 
     @Override
