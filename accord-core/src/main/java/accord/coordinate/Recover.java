@@ -50,7 +50,7 @@ class Recover extends Propose implements Callback<RecoverReply>
 
             if (tracker.success(from))
             {
-                new Recover(node, ballot, txnId, txn, homeKey, node.topology().forTxn(txn, txnId.epoch)).addCallback((success, failure) -> {
+                new Recover(node, ballot, txnId, txn, homeKey).addCallback((success, failure) -> {
                     if (success != null) trySuccess(success);
                     else tryFailure(failure);
                 });
@@ -123,6 +123,7 @@ class Recover extends Propose implements Callback<RecoverReply>
     private Recover(Node node, Ballot ballot, TxnId txnId, Txn txn, Key homeKey, Topologies topologies)
     {
         super(node, ballot, txnId, txn, homeKey);
+        assert topologies.oldestEpoch() == topologies.currentEpoch() && topologies.currentEpoch() == txnId.epoch;
         this.tracker = new FastPathTracker<>(topologies, ShardTracker[]::new, ShardTracker::new);
         node.send(tracker.nodes(), to -> new BeginRecovery(to, topologies, txnId, txn, homeKey, ballot), this);
     }
@@ -243,7 +244,7 @@ class Recover extends Propose implements Callback<RecoverReply>
 
     private void retry()
     {
-        new Recover(node, ballot, txnId, txn, homeKey, node.topology().forEpoch(txn, txnId.epoch)).addCallback((success, failure) -> {
+        new Recover(node, ballot, txnId, txn, homeKey, tracker.topologies()).addCallback((success, failure) -> {
             if (success != null) setSuccess(success);
             else tryFailure(failure);
         });

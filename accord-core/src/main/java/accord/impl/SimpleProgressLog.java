@@ -356,10 +356,12 @@ public class SimpleProgressLog implements Runnable, ProgressLog.Factory
                 case PreAccepted:
                 case Accepted:
                     blockedOn = Status.Committed;
+                    progress = Expected;
                     break;
                 case Committed:
                 case ReadyToExecute:
                     blockedOn = Executed;
+                    progress = Expected;
                     break;
                 case Executed:
                 case Applied:
